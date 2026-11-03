@@ -65,6 +65,19 @@ if (-not (Test-Path $runDir)) {
     New-Item -ItemType Directory -Path $runDir -Force | Out-Null
 }
 
+# Clean up any stale PID files from previous crashes/reboots
+$trackedPidFiles = @("laravel.pid", "vite.pid")
+foreach ($file in $trackedPidFiles) {
+    $filePath = Join-Path $runDir $file
+    if (Test-Path $filePath) {
+        $pRaw = (Get-Content $filePath -ErrorAction SilentlyContinue | Out-String).Trim()
+        $proc = if ($pRaw -match '^\d+$') { Get-Process -Id [int]$pRaw -ErrorAction SilentlyContinue } else { $null }
+        if (-not $proc) {
+            Remove-Item $filePath -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
 $appUrl = "http://127.0.0.1:8000"
 $viteUrl = "http://127.0.0.1:5173"
 

@@ -22,6 +22,13 @@ Route::get('/', function () {
     return redirect()->route('login');
 });
 
+Route::get('/welcome', function () {
+    return Inertia::render('Welcome', [
+        'canLogin' => Route::has('login'),
+        'canRegister' => config('auth.allow_registration', false),
+    ]);
+})->name('welcome');
+
 Route::middleware(['auth', 'verified'])->group(function () {
     // 1. Dashboard
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');

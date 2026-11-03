@@ -2,6 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { PageProps } from '@/types';
+import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import QuickAddModal from '@/Components/QuickAddModal.vue';
 import {
     LayoutDashboard,
@@ -105,9 +106,7 @@ const toggleSidebar = () => {
                 <!-- Brand / Logo -->
                 <div class="h-16 flex items-center justify-between px-4 border-b border-neutral-200 dark:border-neutral-800">
                     <Link :href="route('dashboard')" class="flex items-center gap-2.5 overflow-hidden">
-                        <div class="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shrink-0 shadow-sm">
-                            P
-                        </div>
+                        <ApplicationLogo class="h-8 w-8 shrink-0" />
                         <span v-if="!isSidebarCollapsed" class="font-semibold text-sm tracking-tight text-neutral-900 dark:text-white truncate">
                             Operations Hub
                         </span>
@@ -186,9 +185,7 @@ const toggleSidebar = () => {
                 <div class="relative w-72 max-w-[80vw] bg-white dark:bg-neutral-900 h-full shadow-2xl flex flex-col z-10">
                     <div class="h-16 flex items-center justify-between px-4 border-b border-neutral-200 dark:border-neutral-800">
                         <div class="flex items-center gap-2.5">
-                            <div class="h-8 w-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold shrink-0">
-                                P
-                            </div>
+                            <ApplicationLogo class="h-8 w-8 shrink-0" />
                             <span class="font-semibold text-sm text-neutral-900 dark:text-white">Operations Hub</span>
                         </div>
                         <button @click="isMobileDrawerOpen = false" class="p-1 rounded text-neutral-400 hover:text-neutral-600">

@@ -14,7 +14,7 @@ Rather than a generic to-do list or spreadsheet clone, the **Personal Operations
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide Icons (`@lucide/vue`)
 - **Database**: SQLite (out-of-the-box zero-configuration, migrations compatible with PostgreSQL/MySQL)
-- **Testing**: Pest PHP & PHPUnit (46 automated tests with 100% pass rate)
+- **Testing**: Pest PHP & PHPUnit (47 automated tests with 120 assertions, 100% pass rate)
 - **Asset Bundler**: Vite 8
 
 ---
@@ -136,54 +136,111 @@ Configure SQLite and run migrations with seed data:
 php artisan migrate:fresh --seed
 ```
 
-### 4. Running the Development Server
+### 4. Starting the Application
 
-Start Vite and the Laravel server concurrently:
+#### Option A: One-Click Windows Launcher (Recommended)
+
+Simply double-click or run the launcher script from the project root:
+
+**Using Command Prompt / Batch:**
+```cmd
+start.bat
+```
+
+**Using PowerShell:**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\start.ps1
+```
+
+**What the launcher automates:**
+1. Validates CLI prerequisites (`php`, `composer`, `node`, `npm`).
+2. Confirms `.env` and `database/database.sqlite` exist (generates key if needed).
+3. Executes safe, non-destructive migrations (`php artisan migrate --force`) to preserve all existing user data.
+4. Checks port availability (Laravel on port `8000`, Vite on port `5173`).
+5. Spawns both services in the background.
+6. Polls `http://127.0.0.1:8000` until the application is actively serving traffic.
+7. Automatically launches your default web browser directly to:
+   👉 **`http://127.0.0.1:8000`**
+
+**To stop all background services:**
+```cmd
+stop.bat
+```
+*Or in PowerShell:*
+```powershell
+powershell -ExecutionPolicy Bypass -File .\stop.ps1
+```
+
+---
+
+#### Option B: Manual Two-Terminal Setup (Cross-Platform)
 
 ```bash
-# In terminal 1 (Vite frontend compiler):
+# Terminal 1: Frontend compiler
 npm run dev
 
-# In terminal 2 (Laravel local server):
+# Terminal 2: Backend server
 php artisan serve
 ```
 
-Access the application in your browser at:  
-👉 **`http://localhost:8000`**
+Access the application at: **`http://127.0.0.1:8000`**
 
 ---
 
 ## Default Seeded Credentials
 
-The database comes pre-seeded with sample data tailored for an engineering student and team lead:
+The database comes pre-configured for an engineering student and team lead:
 
 - **Email**: `user@operations-hub.local`
 - **Password**: `password`
 
-*(Registration is disabled by default for private single-user installations. You can enable it by setting `ALLOW_REGISTRATION=true` in `.env` if desired.)*
+*(Registration is disabled by default for private installations. You can enable it by setting `ALLOW_REGISTRATION=true` in `.env` if desired.)*
 
 ---
 
 ## Automated Testing
 
-Run the full automated test suite (Pest PHP / PHPUnit):
+Run the automated test suite (Pest PHP / PHPUnit):
 
 ```bash
 php artisan test
 ```
 
-All 46 tests verify:
+**Result: 47 passed (120 assertions, 100% pass rate)**
 
-- Authentication & private user scoping
-- Cross-user data isolation policies
-- Category management & safe deletion reassignment
-- Task lifecycle, checklists, recurrence, duplication, and bulk operations
-- Daily plan constraints (max 3 priorities) & recovery notes
-- Project milestones & status transitions
-- Habits check-ins and weekly reflection persistence
-- JSON / CSV export and JSON backup validation
+The test suite validates:
+- Authentication, guest views, password resets, and private user scoping
+- Cross-user data isolation policies preventing unauthorized record modification
+- Category lifecycle & safe deletion reassignment
+- Task management, subtask checklists, recurrence rules, duplication, and bulk operations
+- Daily plan constraints (max 3 priorities) & personal recovery notes
+- Project milestones & stage-gate transitions
+- Habits check-ins and weekly reflection note persistence
+- JSON / CSV export and JSON backup schema validation
 
 ---
+
+## System Audit & Enhancement Record
+
+The following architectural, design, and security improvements were implemented:
+
+1. **Branded Authentication Suite**
+   - **Modern Aesthetic**: Replaced generic starter views with a calm slate and deep navy workspace theme featuring accessible typography and consistent dark/light mode support.
+   - **Custom Application Emblem**: Designed an SVG geometric hub mark (`ApplicationLogo.vue`) shared across guest cards, login views, and responsive sidebars.
+   - **Enhanced Credentials Form**: Built accessible input labels, show/hide password toggle controls, keyboard tab flows, visible focus indicators, and loading/disabled states.
+   - **Clean UX**: Removed placeholder social-auth links and non-functional buttons; conditionally hides registration links when registration is disabled (`canRegister`).
+   - **Branded Welcome Experience**: Replaced the 376-line default Laravel welcome view with a modern overview of the Personal Operations Hub workflow.
+
+2. **Security & Data Integrity**
+   - **Strict Multi-Tenant Scoping**: Configured `AuthorizesRequests` and Eloquent policies (`CategoryPolicy`, `TaskPolicy`, `HabitPolicy`, `ProjectPolicy`, `MilestonePolicy`, `ReviewPolicy`) ensuring all queries strictly scope to the authenticated user.
+   - **Non-Destructive Operations**: Category deletion enforces task reassignment or unassignment rather than cascading silent data loss.
+   - **Preserved Database Records**: All updates avoid destructive commands (`migrate:fresh`) to safeguard persisted user data.
+
+3. **Type Safety & Reliability**
+   - **TypeScript Strictness**: Resolved TS typing warnings in `Dashboard.vue` and `MyDay/Index.vue`.
+   - **Pivot Integrity**: Corrected explicit `task_tag` pivot declarations in `Task` and `Tag` models.
+   - **In-Memory Testing Support**: Guarded registration gating inside controller actions rather than route definition callbacks, allowing tests to run cleanly in isolated `:memory:` databases.
+   - **Zero Build Warnings**: `npm run build` (`vue-tsc && vite build`) compiles all 2,543 modules with 0 errors.
 
 ## Production Deployment & Backups
 

@@ -208,25 +208,27 @@ const submitEvent = () => {
 
             <!-- Calendar Month Grid -->
             <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-xs">
-                <!-- Day Headers (Mon - Sun) -->
-                <div class="grid grid-cols-7 border-b border-neutral-200 dark:border-neutral-800 text-center text-[11px] font-semibold text-neutral-400 py-2.5 uppercase tracking-wider bg-neutral-50 dark:bg-neutral-800/40">
-                    <div>Mon</div>
-                    <div>Tue</div>
-                    <div>Wed</div>
-                    <div>Thu</div>
-                    <div>Fri</div>
-                    <div>Sat</div>
-                    <div>Sun</div>
-                </div>
+                <div class="overflow-x-auto">
+                    <div class="min-w-[640px] sm:min-w-0">
+                        <!-- Day Headers (Mon - Sun) -->
+                        <div class="grid grid-cols-7 border-b border-neutral-200 dark:border-neutral-800 text-center text-[11px] font-semibold text-neutral-400 py-2.5 uppercase tracking-wider bg-neutral-50 dark:bg-neutral-800/40">
+                            <div>Mon</div>
+                            <div>Tue</div>
+                            <div>Wed</div>
+                            <div>Thu</div>
+                            <div>Fri</div>
+                            <div>Sat</div>
+                            <div>Sun</div>
+                        </div>
 
-                <!-- Days Cells -->
-                <div class="grid grid-cols-7 divide-x divide-y divide-neutral-100 dark:divide-neutral-800">
-                    <div
-                        v-for="day in monthDays"
-                        :key="day.dateStr"
-                        class="min-h-[110px] p-2 flex flex-col justify-between transition hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 group"
-                        :class="!day.isCurrentMonth ? 'bg-neutral-50/30 dark:bg-neutral-900/40 text-neutral-400 opacity-60' : ''"
-                    >
+                        <!-- Days Cells -->
+                        <div class="grid grid-cols-7 divide-x divide-y divide-neutral-100 dark:divide-neutral-800">
+                            <div
+                                v-for="day in monthDays"
+                                :key="day.dateStr"
+                                class="min-h-[110px] p-2 flex flex-col justify-between transition hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 group"
+                                :class="!day.isCurrentMonth ? 'bg-neutral-50/30 dark:bg-neutral-900/40 text-neutral-400 opacity-60' : ''"
+                            >
                         <div class="flex items-center justify-between mb-1">
                             <span
                                 class="text-xs font-semibold rounded-full w-5 h-5 flex items-center justify-center"
@@ -262,9 +264,11 @@ const submitEvent = () => {
                                 </span>
                             </div>
                         </div>
+                        </div>
                     </div>
                 </div>
             </div>
+        </div>
 
             <!-- Create Event Modal -->
             <div

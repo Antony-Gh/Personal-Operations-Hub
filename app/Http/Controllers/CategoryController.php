@@ -7,6 +7,7 @@ use App\Models\Task;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -103,7 +104,11 @@ class CategoryController extends Controller
 
         $validated = $request->validate([
             'task_action' => 'required|string|in:reassign,delete_tasks,keep_unassigned',
-            'reassign_to_category_id' => 'nullable|required_if:task_action,reassign|exists:categories,id',
+            'reassign_to_category_id' => [
+                'nullable',
+                'required_if:task_action,reassign',
+                Rule::exists('categories', 'id')->where('user_id', $request->user()->id),
+            ],
         ]);
 
         DB::transaction(function () use ($category, $validated) {

@@ -7,6 +7,7 @@ use App\Models\DailyPlan;
 use App\Models\DailyPlanTask;
 use App\Models\PhoneUsageLog;
 use App\Models\Task;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -115,7 +116,11 @@ class DailyPlanController extends Controller
         }
 
         $validated = $request->validate([
-            'task_id' => 'required|integer|exists:tasks,id',
+            'task_id' => [
+                'required',
+                'integer',
+                Rule::exists('tasks', 'id')->where('user_id', $request->user()->id),
+            ],
             'is_priority' => 'nullable|boolean',
         ]);
 
@@ -188,7 +193,10 @@ class DailyPlanController extends Controller
 
         $validated = $request->validate([
             'order' => 'required|array',
-            'order.*' => 'integer|exists:tasks,id',
+            'order.*' => [
+                'integer',
+                Rule::exists('tasks', 'id')->where('user_id', $request->user()->id),
+            ],
         ]);
 
         DB::transaction(function () use ($validated, $dailyPlan) {

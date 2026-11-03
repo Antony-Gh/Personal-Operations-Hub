@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { Head, Link, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Category, Habit, UserSetting } from '@/types';
+import { useTheme, ThemePreference } from '@/composables/useTheme';
 import {
     Settings as SettingsIcon,
     Save,
@@ -21,9 +22,11 @@ const props = defineProps<{
     habits: Habit[];
 }>();
 
+const { setTheme } = useTheme();
+
 const settingForm = useForm({
     display_name: props.setting.display_name || '',
-    theme: props.setting.theme || 'light',
+    theme: (props.setting.theme as ThemePreference) || 'light',
     language: props.setting.language || 'en',
     week_start: props.setting.week_start ?? 1,
     date_format: props.setting.date_format || 'YYYY-MM-DD',
@@ -33,6 +36,15 @@ const settingForm = useForm({
     phone_usage_target_minutes: props.setting.phone_usage_target_minutes || 60,
     weekly_review_prompts: [...(props.setting.weekly_review_prompts || [])],
 });
+
+watch(
+    () => settingForm.theme,
+    (val) => {
+        if (val) {
+            setTheme(val as ThemePreference);
+        }
+    }
+);
 
 const newPromptText = ref('');
 

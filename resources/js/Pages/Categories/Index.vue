@@ -154,7 +154,7 @@ const moveCategory = (index: number, direction: 'up' | 'down') => {
                     <div
                         v-for="(cat, idx) in categories.filter(c => showArchived ? c.is_archived : !c.is_archived)"
                         :key="cat.id"
-                        class="p-4 flex items-center justify-between hover:bg-neutral-50/70 dark:hover:bg-neutral-800/40 transition group"
+                        class="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-neutral-50/70 dark:hover:bg-neutral-800/40 transition group"
                     >
                         <div class="flex items-center gap-3.5">
                             <span class="w-3.5 h-3.5 rounded-full shrink-0 shadow-xs" :style="{ backgroundColor: cat.color || '#6366f1' }"></span>

@@ -130,11 +130,11 @@ class HabitController extends Controller
 
         HabitCheckIn::updateOrCreate(
             [
+                'user_id' => $request->user()->id,
                 'habit_id' => $habit->id,
                 'date' => $validated['date'],
             ],
             [
-                'user_id' => $request->user()->id,
                 'status' => $validated['status'],
                 'notes' => $validated['notes'] ?? null,
             ]

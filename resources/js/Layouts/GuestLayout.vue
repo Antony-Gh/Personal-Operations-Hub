@@ -1,31 +1,14 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { onMounted } from 'vue';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import { Link } from '@inertiajs/vue3';
 import { Sun, Moon } from 'lucide-vue-next';
+import { useTheme } from '@/composables/useTheme';
 
-const isDark = ref(false);
-
-const toggleTheme = () => {
-    isDark.value = !isDark.value;
-    if (isDark.value) {
-        document.documentElement.classList.add('dark');
-        localStorage.setItem('theme', 'dark');
-    } else {
-        document.documentElement.classList.remove('dark');
-        localStorage.setItem('theme', 'light');
-    }
-};
+const { isDark, toggleTheme, initTheme } = useTheme();
 
 onMounted(() => {
-    const savedTheme = localStorage.getItem('theme');
-    if (savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-        isDark.value = true;
-        document.documentElement.classList.add('dark');
-    } else {
-        isDark.value = false;
-        document.documentElement.classList.remove('dark');
-    }
+    initTheme();
 });
 </script>
 

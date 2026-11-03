@@ -14,7 +14,7 @@ Rather than a generic to-do list or spreadsheet clone, the **Personal Operations
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide Icons (`@lucide/vue`)
 - **Database**: SQLite (out-of-the-box zero-configuration, migrations compatible with PostgreSQL/MySQL)
-- **Testing**: Pest PHP & PHPUnit (47 automated tests with 120 assertions, 100% pass rate)
+- **Testing**: Pest PHP & PHPUnit (48 automated tests with 122 assertions, 100% pass rate)
 - **Asset Bundler**: Vite 8
 
 ---
@@ -155,14 +155,15 @@ powershell -ExecutionPolicy Bypass -File .\start.ps1
 **What the launcher automates:**
 1. Validates CLI prerequisites (`php`, `composer`, `node`, `npm`).
 2. Confirms `.env` and `database/database.sqlite` exist (generates key if needed).
-3. Executes safe, non-destructive migrations (`php artisan migrate --force`) to preserve all existing user data.
-4. Checks port availability (Laravel on port `8000`, Vite on port `5173`).
-5. Spawns both services in the background.
-6. Polls `http://127.0.0.1:8000` until the application is actively serving traffic.
+3. Creates a database safety backup (`database/database.sqlite.bak`) prior to running migrations.
+4. Executes safe, non-destructive migrations (`php artisan migrate --force`) to preserve existing user data.
+5. Captures and records process IDs (PIDs) in `.run/` for targeted process management.
+6. Polls both the Laravel backend (`http://127.0.0.1:8000`) and the Vite frontend compiler (`http://127.0.0.1:5173/@vite/client`) to ensure full styling and script readiness.
 7. Automatically launches your default web browser directly to:
    👉 **`http://127.0.0.1:8000`**
 
 **To stop all background services:**
+`stop.bat` and `stop.ps1` read the tracked PIDs from `.run/` and cleanly terminate only the processes started by Personal Operations Hub, without terminating unrelated services.
 ```cmd
 stop.bat
 ```
@@ -206,7 +207,9 @@ Run the automated test suite (Pest PHP / PHPUnit):
 php artisan test
 ```
 
-**Result: 47 passed (120 assertions, 100% pass rate)**
+**Result: 48 passed (122 assertions, 100% pass rate)**
+
+For production deployment instructions and platform trade-offs (including why Vercel is not recommended for this monolithic architecture), refer to the comprehensive [Production Deployment Guide](DEPLOYMENT.md).
 
 The test suite validates:
 - Authentication, guest views, password resets, and private user scoping

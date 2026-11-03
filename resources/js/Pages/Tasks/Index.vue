@@ -502,7 +502,7 @@ const saveTask = () => {
 
                                 <!-- Row Actions -->
                                 <td class="p-3 text-right whitespace-nowrap">
-                                    <div class="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition">
+                                    <div class="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
                                         <button
                                             @click="openEditModal(task)"
                                             class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"

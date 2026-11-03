@@ -9,6 +9,7 @@ use App\Models\Task;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -70,9 +71,14 @@ class ProjectController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $user = $request->user();
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $user->id),
+            ],
             'description' => 'nullable|string',
             'status' => 'required|in:planned,in_progress,on_hold,completed,archived',
             'start_date' => 'nullable|date',
@@ -82,8 +88,6 @@ class ProjectController extends Controller
             'milestones.*.title' => 'required|string|max:255',
             'milestones.*.due_date' => 'nullable|date',
         ]);
-
-        $user = $request->user();
 
         DB::transaction(function () use ($validated, $user) {
             $project = Project::create([
@@ -119,7 +123,10 @@ class ProjectController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $request->user()->id),
+            ],
             'description' => 'nullable|string',
             'status' => 'required|in:planned,in_progress,on_hold,completed,archived',
             'start_date' => 'nullable|date',

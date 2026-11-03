@@ -1,3 +1,5 @@
+/.run
+*.bak
 *.log
 .DS_Store
 .env

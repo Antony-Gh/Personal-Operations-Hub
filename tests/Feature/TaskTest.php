@@ -100,3 +100,19 @@ it('isolates user tasks from other users', function () {
     expect($task->fresh()->trashed())->toBeFalse();
 });
 
+it('rejects assigning another users category or project to a task', function () {
+    $user1 = User::factory()->create();
+    $user2 = User::factory()->create();
+
+    $otherUserCategory = Category::create(['user_id' => $user2->id, 'name' => 'Foreign Area']);
+
+    $response = $this->actingAs($user1)->post(route('tasks.store'), [
+        'title' => 'Sneaky Task',
+        'category_id' => $otherUserCategory->id,
+        'priority' => 'medium',
+        'status' => 'not_started',
+    ]);
+
+    $response->assertSessionHasErrors(['category_id']);
+});
+

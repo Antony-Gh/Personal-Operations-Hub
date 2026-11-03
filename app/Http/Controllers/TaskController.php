@@ -10,6 +10,7 @@ use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -103,11 +104,19 @@ class TaskController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
+        $user = $request->user();
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
-            'project_id' => 'nullable|exists:projects,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $user->id),
+            ],
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')->where('user_id', $user->id),
+            ],
             'priority' => 'required|in:high,medium,low',
             'status' => 'required|in:not_started,in_progress,waiting,completed,deferred',
             'due_date' => 'nullable|date',
@@ -119,12 +128,13 @@ class TaskController extends Controller
             'is_recurring' => 'nullable|boolean',
             'recurrence_rule' => 'nullable|string|max:100',
             'tag_ids' => 'nullable|array',
-            'tag_ids.*' => 'integer|exists:tags,id',
+            'tag_ids.*' => [
+                'integer',
+                Rule::exists('tags', 'id')->where('user_id', $user->id),
+            ],
             'checklists' => 'nullable|array',
             'checklists.*.title' => 'required|string|max:255',
         ]);
-
-        $user = $request->user();
 
         DB::transaction(function () use ($validated, $user) {
             $task = Task::create([
@@ -168,12 +178,19 @@ class TaskController extends Controller
     public function update(Request $request, Task $task): RedirectResponse
     {
         $this->authorize('update', $task);
+        $user = $request->user();
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'category_id' => 'nullable|exists:categories,id',
-            'project_id' => 'nullable|exists:projects,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $user->id),
+            ],
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')->where('user_id', $user->id),
+            ],
             'priority' => 'required|in:high,medium,low',
             'status' => 'required|in:not_started,in_progress,waiting,completed,deferred',
             'due_date' => 'nullable|date',
@@ -185,7 +202,10 @@ class TaskController extends Controller
             'is_recurring' => 'nullable|boolean',
             'recurrence_rule' => 'nullable|string|max:100',
             'tag_ids' => 'nullable|array',
-            'tag_ids.*' => 'integer|exists:tags,id',
+            'tag_ids.*' => [
+                'integer',
+                Rule::exists('tags', 'id')->where('user_id', $user->id),
+            ],
             'checklists' => 'nullable|array',
             'checklists.*.id' => 'nullable|integer',
             'checklists.*.title' => 'required|string|max:255',
@@ -292,15 +312,21 @@ class TaskController extends Controller
 
     public function bulkUpdate(Request $request): RedirectResponse
     {
+        $user = $request->user();
+
         $validated = $request->validate([
             'task_ids' => 'required|array',
-            'task_ids.*' => 'integer|exists:tasks,id',
+            'task_ids.*' => [
+                'integer',
+                Rule::exists('tasks', 'id')->where('user_id', $user->id),
+            ],
             'action' => 'required|string|in:complete,reopen,delete,set_priority,set_category',
             'priority' => 'nullable|in:high,medium,low',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $user->id),
+            ],
         ]);
-
-        $user = $request->user();
         $tasks = Task::where('user_id', $user->id)->whereIn('id', $validated['task_ids']);
 
         if ($validated['action'] === 'complete') {

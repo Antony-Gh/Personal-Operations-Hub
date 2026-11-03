@@ -7,6 +7,7 @@ use App\Models\Category;
 use App\Models\Project;
 use App\Models\ProjectMilestone;
 use App\Models\Task;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -116,7 +117,10 @@ class CalendarController extends Controller
     {
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $request->user()->id),
+            ],
             'start_time' => 'required|date',
             'end_time' => 'required|date|after_or_equal:start_time',
             'all_day' => 'nullable|boolean',
@@ -146,7 +150,10 @@ class CalendarController extends Controller
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
-            'category_id' => 'nullable|exists:categories,id',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $request->user()->id),
+            ],
             'start_time' => 'required|date',
             'end_time' => 'required|date|after_or_equal:start_time',
             'all_day' => 'nullable|boolean',

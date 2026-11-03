@@ -122,3 +122,4 @@ class CategoryController extends Controller
         return back()->with('success', 'Area deleted successfully.');
     }
 }
+

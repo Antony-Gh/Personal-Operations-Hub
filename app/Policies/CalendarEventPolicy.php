@@ -22,3 +22,4 @@ class CalendarEventPolicy
         return $event->user_id === $user->id;
     }
 }
+

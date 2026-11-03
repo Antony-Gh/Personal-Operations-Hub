@@ -22,3 +22,4 @@ class CategoryPolicy
         return $category->user_id === $user->id;
     }
 }
+

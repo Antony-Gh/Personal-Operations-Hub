@@ -35,3 +35,4 @@ class DailyPlanTask extends Model
         return $this->belongsTo(Task::class);
     }
 }
+

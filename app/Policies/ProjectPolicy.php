@@ -22,3 +22,4 @@ class ProjectPolicy
         return $project->user_id === $user->id;
     }
 }
+

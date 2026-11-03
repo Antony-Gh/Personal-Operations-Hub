@@ -57,3 +57,4 @@ class Project extends Model
         return $query->whereNotIn('status', ['completed', 'archived']);
     }
 }
+

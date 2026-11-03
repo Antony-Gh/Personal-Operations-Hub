@@ -327,3 +327,4 @@ class TaskController extends Controller
         return back()->with('success', 'Task deleted.');
     }
 }
+

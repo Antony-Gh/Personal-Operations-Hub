@@ -36,3 +36,4 @@ class DailyPlan extends Model
         return $this->hasMany(DailyPlanTask::class)->orderBy('sort_order');
     }
 }
+

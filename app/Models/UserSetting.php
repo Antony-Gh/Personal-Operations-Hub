@@ -53,3 +53,4 @@ class UserSetting extends Model
         ];
     }
 }
+

@@ -7,7 +7,7 @@ use App\Models\User;
 
 class HabitPolicy
 {
-    public function view(User $user, Habit habit): bool
+    public function view(User $user, Habit $habit): bool
     {
         return $habit->user_id === $user->id;
     }
@@ -22,3 +22,4 @@ class HabitPolicy
         return $habit->user_id === $user->id;
     }
 }
+

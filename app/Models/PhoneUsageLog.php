@@ -30,3 +30,4 @@ class PhoneUsageLog extends Model
         return $this->belongsTo(User::class);
     }
 }
+

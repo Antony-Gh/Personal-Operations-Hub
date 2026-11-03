@@ -1,24 +1,99 @@
 <?php
 
+use App\Http\Controllers\CalendarController;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DailyPlanController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DataExportImportController;
+use App\Http\Controllers\HabitController;
+use App\Http\Controllers\PhoneUsageController;
 use App\Http\Controllers\ProfileController;
-use Illuminate\Foundation\Application;
+use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\SettingController;
+use App\Http\Controllers\TaskController;
+use App\Http\Controllers\WeeklyReviewController;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
 
 Route::get('/', function () {
-    return Inertia::render('Welcome', [
-        'canLogin' => Route::has('login'),
-        'canRegister' => Route::has('register'),
-        'laravelVersion' => Application::VERSION,
-        'phpVersion' => PHP_VERSION,
-    ]);
+    if (Auth::check()) {
+        return redirect()->route('dashboard');
+    }
+    return redirect()->route('login');
 });
 
-Route::get('/dashboard', function () {
-    return Inertia::render('Dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::middleware(['auth', 'verified'])->group(function () {
+    // 1. Dashboard
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
-Route::middleware('auth')->group(function () {
+    // 2. My Day (Daily Planning)
+    Route::get('/my-day', [DailyPlanController::class, 'index'])->name('my-day.index');
+    Route::put('/my-day/{dailyPlan}', [DailyPlanController::class, 'updatePlan'])->name('my-day.update');
+    Route::post('/my-day/{dailyPlan}/tasks', [DailyPlanController::class, 'addTask'])->name('my-day.add-task');
+    Route::post('/my-day/{dailyPlan}/tasks/{task}/priority', [DailyPlanController::class, 'togglePriority'])->name('my-day.toggle-priority');
+    Route::delete('/my-day/{dailyPlan}/tasks/{task}', [DailyPlanController::class, 'removeTask'])->name('my-day.remove-task');
+    Route::post('/my-day/{dailyPlan}/reorder', [DailyPlanController::class, 'reorder'])->name('my-day.reorder');
+    Route::post('/tasks/{task}/reschedule', [DailyPlanController::class, 'rescheduleTask'])->name('tasks.reschedule');
+
+    // 3. Tasks
+    Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
+    Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
+    Route::put('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
+    Route::post('/tasks/{task}/toggle', [TaskController::class, 'toggleStatus'])->name('tasks.toggle');
+    Route::post('/tasks/{task}/duplicate', [TaskController::class, 'duplicate'])->name('tasks.duplicate');
+    Route::post('/tasks/bulk', [TaskController::class, 'bulkUpdate'])->name('tasks.bulk');
+    Route::delete('/tasks/{task}', [TaskController::class, 'destroy'])->name('tasks.destroy');
+
+    // 4. Categories & Areas
+    Route::get('/categories', [CategoryController::class, 'index'])->name('categories.index');
+    Route::post('/categories', [CategoryController::class, 'store'])->name('categories.store');
+    Route::put('/categories/{category}', [CategoryController::class, 'update'])->name('categories.update');
+    Route::post('/categories/{category}/archive', [CategoryController::class, 'toggleArchive'])->name('categories.archive');
+    Route::post('/categories/reorder', [CategoryController::class, 'reorder'])->name('categories.reorder');
+    Route::delete('/categories/{category}', [CategoryController::class, 'destroy'])->name('categories.destroy');
+
+    // 5. Projects
+    Route::get('/projects', [ProjectController::class, 'index'])->name('projects.index');
+    Route::post('/projects', [ProjectController::class, 'store'])->name('projects.store');
+    Route::get('/projects/{project}', [ProjectController::class, 'show'])->name('projects.show');
+    Route::put('/projects/{project}', [ProjectController::class, 'update'])->name('projects.update');
+    Route::delete('/projects/{project}', [ProjectController::class, 'destroy'])->name('projects.destroy');
+    Route::post('/projects/{project}/milestones', [ProjectController::class, 'storeMilestone'])->name('projects.milestones.store');
+    Route::post('/milestones/{milestone}/toggle', [ProjectController::class, 'toggleMilestone'])->name('milestones.toggle');
+    Route::delete('/milestones/{milestone}', [ProjectController::class, 'destroyMilestone'])->name('milestones.destroy');
+
+    // 6. Calendar
+    Route::get('/calendar', [CalendarController::class, 'index'])->name('calendar.index');
+    Route::post('/calendar/events', [CalendarController::class, 'storeEvent'])->name('calendar.events.store');
+    Route::put('/calendar/events/{event}', [CalendarController::class, 'updateEvent'])->name('calendar.events.update');
+    Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroyEvent'])->name('calendar.events.destroy');
+    Route::post('/calendar/tasks/{task}/move', [CalendarController::class, 'moveTask'])->name('calendar.tasks.move');
+
+    // 7. Habits
+    Route::get('/habits', [HabitController::class, 'index'])->name('habits.index');
+    Route::post('/habits', [HabitController::class, 'store'])->name('habits.store');
+    Route::put('/habits/{habit}', [HabitController::class, 'update'])->name('habits.update');
+    Route::delete('/habits/{habit}', [HabitController::class, 'destroy'])->name('habits.destroy');
+    Route::post('/habits/{habit}/check-in', [HabitController::class, 'checkIn'])->name('habits.check-in');
+
+    // 8. Weekly Review
+    Route::get('/weekly-review', [WeeklyReviewController::class, 'index'])->name('weekly-review.index');
+    Route::put('/weekly-review/{weeklyReview}', [WeeklyReviewController::class, 'update'])->name('weekly-review.update');
+
+    // 9. Phone Usage Tracker
+    Route::post('/phone-usage', [PhoneUsageController::class, 'store'])->name('phone-usage.store');
+
+    // 10. Settings & Data Management
+    Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
+    Route::put('/settings', [SettingController::class, 'update'])->name('settings.update');
+    Route::get('/settings/data', [DataExportImportController::class, 'index'])->name('settings.data');
+    Route::get('/settings/export/json', [DataExportImportController::class, 'exportJson'])->name('settings.export.json');
+    Route::get('/settings/export/tasks-csv', [DataExportImportController::class, 'exportTasksCsv'])->name('settings.export.tasks-csv');
+    Route::get('/settings/backup/database', [DataExportImportController::class, 'downloadDatabaseBackup'])->name('settings.backup.database');
+    Route::post('/settings/import/preview', [DataExportImportController::class, 'previewImport'])->name('settings.import.preview');
+    Route::post('/settings/import/process', [DataExportImportController::class, 'processImport'])->name('settings.import.process');
+
+    // Standard profile
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');

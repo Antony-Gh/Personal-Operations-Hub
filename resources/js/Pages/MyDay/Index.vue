@@ -1,0 +1,491 @@
+<script setup lang="ts">
+import { ref } from 'vue';
+import { Head, router, useForm } from '@inertiajs/vue3';
+import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { CalendarEvent, DailyPlan, PhoneUsageLog, Task } from '@/types';
+import {
+    Sun,
+    Calendar as CalendarIcon,
+    ChevronLeft,
+    ChevronRight,
+    CheckCircle2,
+    Check,
+    Plus,
+    Flame,
+    ShieldAlert,
+    Heart,
+    Clock,
+    Trash2,
+    ArrowUp,
+    ArrowDown,
+    CalendarClock,
+    ListTodo,
+} from 'lucide-vue-next';
+
+const props = defineProps<{
+    date: string;
+    formattedDate: string;
+    dailyPlan: DailyPlan;
+    plannedTasks: Task[];
+    unplannedDueTasks: Task[];
+    candidateTasks: Task[];
+    fixedCommitments: CalendarEvent[];
+    phoneUsage: PhoneUsageLog | null;
+    targetPhoneMinutes: number;
+}>();
+
+const planForm = useForm({
+    fallback_plan: props.dailyPlan.fallback_plan || '',
+    personal_recovery_notes: props.dailyPlan.personal_recovery_notes || '',
+    notes: props.dailyPlan.notes || '',
+});
+
+const savePlanDetails = () => {
+    planForm.put(route('my-day.update', props.dailyPlan.id), {
+        preserveScroll: true,
+    });
+};
+
+const changeDate = (newDate: string) => {
+    router.get(route('my-day.index'), { date: newDate });
+};
+
+const goToAdjacentDay = (offset: number) => {
+    const current = new Date(props.date);
+    current.setDate(current.getDate() + offset);
+    changeDate(current.toISOString().split('T')[0]);
+};
+
+const goToToday = () => {
+    changeDate(new Date().toISOString().split('T')[0]);
+};
+
+// Task Operations
+const addTaskToPlan = (taskId: number, isPriority = false) => {
+    router.post(
+        route('my-day.add-task', props.dailyPlan.id),
+        { task_id: taskId, is_priority: isPriority },
+        { preserveScroll: true }
+    );
+};
+
+const togglePriority = (task: Task) => {
+    router.post(
+        route('my-day.toggle-priority', [props.dailyPlan.id, task.id]),
+        {},
+        { preserveScroll: true }
+    );
+};
+
+const removeTaskFromPlan = (task: Task) => {
+    router.delete(
+        route('my-day.remove-task', [props.dailyPlan.id, task.id]),
+        { preserveScroll: true }
+    );
+};
+
+const toggleTaskCompletion = (task: Task) => {
+    router.post(route('tasks.toggle', task.id), {}, { preserveScroll: true });
+};
+
+// Reorder tasks
+const moveTaskOrder = (index: number, direction: 'up' | 'down') => {
+    const items = [...props.plannedTasks];
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= items.length) return;
+
+    const temp = items[index];
+    items[index] = items[targetIndex];
+    items[targetIndex] = temp;
+
+    const order = items.map((t) => t.id);
+    router.post(route('my-day.reorder', props.dailyPlan.id), { order }, { preserveScroll: true });
+};
+
+// Reschedule task
+const reschedulingTaskId = ref<number | null>(null);
+const rescheduleDate = ref(props.date);
+
+const openReschedule = (task: Task) => {
+    reschedulingTaskId.value = task.id;
+    rescheduleDate.value = task.due_date || props.date;
+};
+
+const submitReschedule = (task: Task) => {
+    router.post(route('tasks.reschedule', task.id), { due_date: rescheduleDate.value }, {
+        preserveScroll: true,
+        onSuccess: () => {
+            reschedulingTaskId.value = null;
+        },
+    });
+};
+</script>
+
+<template>
+    <Head title="My Day - Daily Planning" />
+
+    <AuthenticatedLayout title="My Day">
+        <div class="max-w-7xl mx-auto space-y-6">
+            <!-- Daily Planning Header with Navigation -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+                <div class="flex items-center gap-3">
+                    <span class="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400">
+                        <Sun class="w-6 h-6" />
+                    </span>
+                    <div>
+                        <div class="flex items-center gap-2">
+                            <h2 class="text-lg font-bold text-neutral-900 dark:text-white">{{ formattedDate }}</h2>
+                            <button
+                                @click="goToToday"
+                                class="px-2 py-0.5 text-[10px] font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded transition"
+                            >
+                                Today
+                            </button>
+                        </div>
+                        <p class="text-xs text-neutral-400">
+                            Intentional focus, clear priorities, and realistic capacity
+                        </p>
+                    </div>
+                </div>
+
+                <!-- Date Picker & Controls -->
+                <div class="flex items-center gap-2">
+                    <button
+                        @click="goToAdjacentDay(-1)"
+                        class="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
+                        title="Previous Day"
+                    >
+                        <ChevronLeft class="w-4 h-4" />
+                    </button>
+                    <input
+                        type="date"
+                        :value="date"
+                        @change="changeDate(($event.target as HTMLInputElement).value)"
+                        class="text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white px-3 py-1.5 focus:border-indigo-500 focus:ring-indigo-500"
+                    />
+                    <button
+                        @click="goToAdjacentDay(1)"
+                        class="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
+                        title="Next Day"
+                    >
+                        <ChevronRight class="w-4 h-4" />
+                    </button>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                <!-- Left 2 Cols: Planned Tasks & Top Priorities -->
+                <div class="lg:col-span-2 space-y-6">
+                    <!-- Planned Tasks Box -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div>
+                                <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">
+                                    Planned for This Day ({{ plannedTasks.length }})
+                                </h3>
+                                <p class="text-[11px] text-neutral-400">
+                                    Reorder tasks and mark up to 3 main priorities
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Empty State -->
+                        <div v-if="plannedTasks.length === 0" class="text-center py-10 px-4 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl text-neutral-400 text-xs">
+                            <ListTodo class="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-700" />
+                            No tasks planned for this day yet. Select from tasks due today below or add candidate tasks.
+                        </div>
+
+                        <!-- Planned Task List -->
+                        <div v-else class="space-y-2.5">
+                            <div
+                                v-for="(task, idx) in plannedTasks"
+                                :key="'plan-' + task.id"
+                                class="flex items-start gap-3 p-3 rounded-xl border transition"
+                                :class="
+                                    task.is_priority
+                                        ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/20 dark:bg-amber-950/10'
+                                        : 'border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30'
+                                "
+                            >
+                                <!-- Complete Checkbox -->
+                                <button
+                                    @click="toggleTaskCompletion(task)"
+                                    class="mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition shrink-0"
+                                    :class="task.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600 hover:border-indigo-500'"
+                                >
+                                    <Check v-if="task.status === 'completed'" class="w-3 h-3" />
+                                </button>
+
+                                <!-- Title & details -->
+                                <div class="flex-1 min-w-0">
+                                    <div class="flex items-center gap-2">
+                                        <span
+                                            class="text-xs font-medium text-neutral-900 dark:text-white"
+                                            :class="{ 'line-through text-neutral-400 dark:text-neutral-500': task.status === 'completed' }"
+                                        >
+                                            {{ task.title }}
+                                        </span>
+                                        <span
+                                            v-if="task.is_priority"
+                                            class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300"
+                                        >
+                                            <Flame class="w-2.5 h-2.5" /> Priority
+                                        </span>
+                                    </div>
+
+                                    <div class="flex items-center gap-2 mt-1 text-[11px] text-neutral-400 flex-wrap">
+                                        <span v-if="task.category" class="inline-flex items-center gap-1 font-medium" :style="{ color: task.category.color }">
+                                            <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: task.category.color }"></span>
+                                            {{ task.category.name }}
+                                        </span>
+                                        <span v-if="task.project" class="text-neutral-500 dark:text-neutral-400">
+                                            &bull; {{ task.project.name }}
+                                        </span>
+                                        <span v-if="task.estimated_duration" class="text-neutral-400">
+                                            &bull; {{ task.estimated_duration }}m est.
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <!-- Action Buttons: Priority Toggle, Move Up/Down, Remove -->
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <!-- Priority Star/Flame Toggle -->
+                                    <button
+                                        @click="togglePriority(task)"
+                                        class="p-1 rounded text-neutral-400 hover:text-amber-500 transition"
+                                        :class="{ 'text-amber-500': task.is_priority }"
+                                        title="Toggle main priority"
+                                    >
+                                        <Flame class="w-4 h-4" />
+                                    </button>
+
+                                    <!-- Move Up / Down -->
+                                    <button
+                                        v-if="idx > 0"
+                                        @click="moveTaskOrder(idx, 'up')"
+                                        class="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                                        title="Move up"
+                                    >
+                                        <ArrowUp class="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                        v-if="idx < plannedTasks.length - 1"
+                                        @click="moveTaskOrder(idx, 'down')"
+                                        class="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                                        title="Move down"
+                                    >
+                                        <ArrowDown class="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <!-- Remove from Daily Plan -->
+                                    <button
+                                        @click="removeTaskFromPlan(task)"
+                                        class="p-1 text-neutral-400 hover:text-rose-500 transition"
+                                        title="Remove from plan"
+                                    >
+                                        <Trash2 class="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tasks Due on this date but not yet planned -->
+                    <div v-if="unplannedDueTasks.length > 0" class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">
+                                    Due On This Date (Unplanned)
+                                </h3>
+                                <p class="text-[11px] text-neutral-400">
+                                    These tasks have a due date of today but are not added to your daily schedule yet
+                                </p>
+                            </div>
+                        </div>
+
+                        <div class="space-y-2">
+                            <div
+                                v-for="task in unplannedDueTasks"
+                                :key="'due-' + task.id"
+                                class="flex items-center justify-between p-2.5 rounded-lg border border-neutral-100 dark:border-neutral-800 hover:border-neutral-200 text-xs"
+                            >
+                                <div class="min-w-0">
+                                    <p class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ task.title }}</p>
+                                    <p v-if="task.category" class="text-[10px] text-neutral-400">{{ task.category.name }}</p>
+                                </div>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        @click="addTaskToPlan(task.id, false)"
+                                        class="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-medium transition"
+                                    >
+                                        + Plan
+                                    </button>
+                                    <button
+                                        @click="openReschedule(task)"
+                                        class="px-2 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-xs transition"
+                                    >
+                                        Reschedule
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Candidate Active Tasks to pull from -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                        <div class="flex items-center justify-between mb-3">
+                            <div>
+                                <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">
+                                    Add Tasks to Today's Plan
+                                </h3>
+                                <p class="text-[11px] text-neutral-400">
+                                    Active tasks available in your backlog
+                                </p>
+                            </div>
+                        </div>
+
+                        <div v-if="candidateTasks.length === 0" class="text-center py-4 text-xs text-neutral-400">
+                            No additional active tasks found.
+                        </div>
+                        <div v-else class="space-y-2">
+                            <div
+                                v-for="task in candidateTasks.slice(0, 5)"
+                                :key="'cand-' + task.id"
+                                class="flex items-center justify-between p-2.5 rounded-lg border border-neutral-100 dark:border-neutral-800 text-xs"
+                            >
+                                <div class="min-w-0">
+                                    <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate block">{{ task.title }}</span>
+                                    <span class="text-[10px] text-neutral-400">
+                                        {{ task.category?.name || 'No Category' }} &bull; Due {{ task.due_date || 'No Date' }}
+                                    </span>
+                                </div>
+                                <button
+                                    @click="addTaskToPlan(task.id)"
+                                    class="px-2.5 py-1 rounded bg-neutral-100 hover:bg-indigo-600 hover:text-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-medium transition text-xs shrink-0"
+                                >
+                                    + Add to Plan
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Col: Fixed Commitments, Fallback Plan & Recovery Time -->
+                <div class="space-y-6">
+                    <!-- Fixed Commitments (Calendar Events on this Date) -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                        <div class="flex items-center gap-2 mb-3">
+                            <span class="p-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400">
+                                <Clock class="w-4 h-4" />
+                            </span>
+                            <div>
+                                <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Fixed Commitments</h3>
+                                <p class="text-[11px] text-neutral-400">Lectures, meetings & scheduled events</p>
+                            </div>
+                        </div>
+
+                        <div v-if="fixedCommitments.length === 0" class="text-center py-4 text-xs text-neutral-400">
+                            No scheduled calendar events for this day.
+                        </div>
+                        <div v-else class="space-y-2">
+                            <div
+                                v-for="evt in fixedCommitments"
+                                :key="evt.id"
+                                class="p-2.5 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30 text-xs"
+                            >
+                                <p class="font-semibold text-neutral-900 dark:text-white">{{ evt.title }}</p>
+                                <p class="text-[11px] text-neutral-500 mt-0.5">
+                                    {{ evt.start_time ? new Date(evt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }} - 
+                                    {{ evt.end_time ? new Date(evt.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }}
+                                </p>
+                                <p v-if="evt.location" class="text-[10px] text-neutral-400 mt-0.5">
+                                    Location: {{ evt.location }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Fallback Plan & Recovery Time -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 space-y-4">
+                        <div class="flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+                                <ShieldAlert class="w-4 h-4" />
+                            </span>
+                            <div>
+                                <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Fallback & Recovery Plan</h3>
+                                <p class="text-[11px] text-neutral-400">Realistic plans when energy is low</p>
+                            </div>
+                        </div>
+
+                        <form @submit.prevent="savePlanDetails" class="space-y-3">
+                            <!-- Fallback Plan -->
+                            <div>
+                                <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                    Fallback Plan (If Day Gets Overwhelmed)
+                                </label>
+                                <textarea
+                                    v-model="planForm.fallback_plan"
+                                    rows="2"
+                                    placeholder="e.g. Focus only on priority #1 and postpone lab schematics."
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                                ></textarea>
+                            </div>
+
+                            <!-- Personal / Recovery Notes -->
+                            <div>
+                                <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                    Personal & Recovery Time
+                                </label>
+                                <textarea
+                                    v-model="planForm.personal_recovery_notes"
+                                    rows="2"
+                                    placeholder="e.g. Walk around the lake at 5 PM, quiet reading before bed."
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                                ></textarea>
+                            </div>
+
+                            <button
+                                type="submit"
+                                :disabled="planForm.processing"
+                                class="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium transition shadow-xs disabled:opacity-50"
+                            >
+                                Save Daily Notes
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Reschedule Modal -->
+            <div
+                v-if="reschedulingTaskId"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
+                @click.self="reschedulingTaskId = null"
+            >
+                <div class="bg-white dark:bg-neutral-900 rounded-xl p-5 max-w-sm w-full border border-neutral-200 dark:border-neutral-800 shadow-xl space-y-4">
+                    <h4 class="text-sm font-semibold text-neutral-900 dark:text-white">Reschedule Task</h4>
+                    <p class="text-xs text-neutral-400">Pick a new target due date for this task:</p>
+                    <input
+                        type="date"
+                        v-model="rescheduleDate"
+                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                    />
+                    <div class="flex justify-end gap-2">
+                        <button
+                            @click="reschedulingTaskId = null"
+                            class="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100 rounded"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            @click="submitReschedule(unplannedDueTasks.find(t => t.id === reschedulingTaskId)!)"
+                            class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700"
+                        >
+                            Confirm Date
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </AuthenticatedLayout>
+</template>

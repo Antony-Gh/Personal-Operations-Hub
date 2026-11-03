@@ -89,6 +89,18 @@ if not exist ".run" mkdir ".run"
 set APP_URL=http://127.0.0.1:8000
 set VITE_URL=http://127.0.0.1:5173
 
+:: Clean up stale PID files if processes are no longer running
+powershell -NoProfile -Command ^
+    "foreach ($f in @('.run\laravel.pid', '.run\vite.pid')) { " ^
+    "  if (Test-Path $f) { " ^
+    "    $raw = (Get-Content $f -ErrorAction SilentlyContinue | Out-String).Trim(); " ^
+    "    if ($raw -match '^\d+$') { " ^
+    "      $proc = Get-Process -Id ([int]$raw) -ErrorAction SilentlyContinue; " ^
+    "      if (-not $proc) { Remove-Item $f -Force -ErrorAction SilentlyContinue } " ^
+    "    } else { Remove-Item $f -Force -ErrorAction SilentlyContinue } " ^
+    "  } " ^
+    "}"
+
 powershell -NoProfile -Command ^
     "$p8000 = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue; " ^
     "if (-not $p8000) { " ^
@@ -100,7 +112,9 @@ powershell -NoProfile -Command ^
 powershell -NoProfile -Command ^
     "$p5173 = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue; " ^
     "if (-not $p5173) { " ^
-    "  $npm = (Get-Command 'npm.cmd' -ErrorAction SilentlyContinue)?.Source ?? 'npm'; " ^
+    "  $npm = 'npm'; " ^
+    "  $cmd = Get-Command 'npm.cmd' -ErrorAction SilentlyContinue; " ^
+    "  if ($cmd) { $npm = $cmd.Source }; " ^
     "  $vp = Start-Process -FilePath $npm -ArgumentList 'run dev' -WorkingDirectory '%~dp0' -PassThru; " ^
     "  $vp.Id | Out-File -FilePath '.run\vite.pid' -Encoding ascii; " ^
     "  Write-Host '      Vite frontend started (PID: ' $vp.Id ')' " ^

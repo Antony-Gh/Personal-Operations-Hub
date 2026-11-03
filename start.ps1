@@ -71,7 +71,7 @@ foreach ($file in $trackedPidFiles) {
     $filePath = Join-Path $runDir $file
     if (Test-Path $filePath) {
         $pRaw = (Get-Content $filePath -ErrorAction SilentlyContinue | Out-String).Trim()
-        $proc = if ($pRaw -match '^\d+$') { Get-Process -Id [int]$pRaw -ErrorAction SilentlyContinue } else { $null }
+        $proc = if ($pRaw -match '^\d+$') { Get-Process -Id ([int]$pRaw) -ErrorAction SilentlyContinue } else { $null }
         if (-not $proc) {
             Remove-Item $filePath -Force -ErrorAction SilentlyContinue
         }

@@ -1,0 +1,11 @@
+.git
+.github
+.run
+node_modules
+vendor
+database/*.sqlite*
+database/*.bak
+*.log
+.env
+.env.*
+Personal-Operations-Hub*.zip

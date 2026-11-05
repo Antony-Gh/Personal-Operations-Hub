@@ -22,6 +22,12 @@ class DatabaseSeeder extends Seeder
 {
     public function run(): void
     {
+        // Guard: Never seed default demo credentials or mock dataset in production
+        if (app()->environment('production')) {
+            $this->command?->warn('DatabaseSeeder: Skipping demo user and mock data in production environment.');
+            return;
+        }
+
         $user = User::firstOrCreate(
             ['email' => 'user@operations-hub.local'],
             [

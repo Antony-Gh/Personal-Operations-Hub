@@ -7,11 +7,13 @@ This guide details the recommended architecture, configuration, and step-by-step
 ## 1. Hosting Architecture & Platform Analysis
 
 ### Why Vercel is Not Recommended for this Monolith
+
 - **Ephemeral Filesystem**: Vercel runs applications in stateless serverless lambdas. Local files—including SQLite databases (`database.sqlite`) and local session files—are wiped between executions or fragmented across isolated instances.
 - **Serverless PHP Constraints**: Vercel has no first-party PHP runtime. Running Laravel on Vercel requires community wrappers (e.g. `vercel-php`), adding cold-start latency, memory overhead, and maintenance fragility.
 - **Inertia.js Monolith Model**: Inertia is designed for tightly coupled full-stack applications where Laravel manages server-side routing, authentication, and SSR/Inertia props. Splitting the app solely to fit Vercel would necessitate rebuilding the backend as a decoupled REST/GraphQL API.
 
 ### Recommended Production Platforms
+
 For a seamless, reliable deployment of this Laravel + Vue 3/Inertia application:
 
 1. **Platform as a Service (PaaS)** *(Recommended for simplicity & low maintenance)*:
@@ -54,7 +56,7 @@ Configure these environment variables on your production host (refer to `.env.ex
 | `DB_USERNAME` | `poh_user` | Database user |
 | `DB_PASSWORD` | `[SECURE_DB_PASSWORD]` | Database password |
 | `SESSION_DRIVER` | `database` | Stores sessions in DB (persists across server restarts) |
-| `SESSION_SECURE_COOKIE`| `true` | Ensures cookies are only transmitted over HTTPS |
+| `SESSION_SECURE_COOKIE` | `true` | Ensures cookies are only transmitted over HTTPS |
 | `SESSION_ENCRYPT` | `true` | Encrypts session payloads |
 | `CACHE_STORE` | `database` *(or `redis`)* | Application cache driver |
 | `QUEUE_CONNECTION` | `database` | Background job driver |
@@ -131,19 +133,24 @@ Configure your cloud provider's health check (e.g. Render Health Check Path or A
 ## 7. Rollback & Disaster Recovery
 
 ### Safe Database Backups
+
 - Regularly download automated JSON snapshots or raw database archives via `/settings/data`.
 - For PostgreSQL / MySQL, set up daily automated snapshots through your cloud provider (e.g., Render automated backups or AWS RDS snapshots).
 
 ### Rolling Back a Release
+
 If an issue occurs after deploying a new release:
+
 1. Revert to the previous Git release commit.
 2. Recompile assets: `npm ci && npm run build`.
 3. If database migrations need to be rolled back:
+
    ```bash
    php artisan migrate:rollback --step=1 --force
    ```
+
 4. Re-cache configuration:
+
    ```bash
    php artisan config:cache && php artisan route:cache && php artisan view:cache
    ```
-

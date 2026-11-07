@@ -2,10 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Category;
 use App\Models\Project;
 use App\Models\ProjectMilestone;
 use App\Models\Task;
+use App\Services\ReminderService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -38,6 +38,7 @@ class ProjectController extends Controller
             $project->progress_percent = $project->total_tasks_count > 0
                 ? round(($project->completed_tasks_count / $project->total_tasks_count) * 100)
                 : 0;
+
             return $project;
         });
 
@@ -55,7 +56,7 @@ class ProjectController extends Controller
         $project->load([
             'category',
             'milestones' => fn ($q) => $q->orderBy('sort_order'),
-            'tasks' => fn ($q) => $q->with(['tags', 'checklists'])->orderBy('sort_order'),
+            'tasks' => fn ($q) => $q->with(['tags', 'checklists'])->orderByPriority()->orderBy('due_date'),
         ]);
 
         $project->total_tasks_count = $project->tasks->count();
@@ -83,13 +84,19 @@ class ProjectController extends Controller
             'status' => 'required|in:planned,in_progress,on_hold,completed,archived',
             'start_date' => 'nullable|date',
             'target_date' => 'nullable|date',
+            'reminders_enabled' => 'nullable|boolean',
+            'reminder_days' => 'nullable|array',
+            'reminder_days.*' => 'integer|min:0|max:365',
+            'overdue_reminders_enabled' => 'nullable|boolean',
             'notes' => 'nullable|string',
             'milestones' => 'nullable|array',
             'milestones.*.title' => 'required|string|max:255',
             'milestones.*.due_date' => 'nullable|date',
+            'milestones.*.due_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'milestones.*.reminders_enabled' => 'nullable|boolean',
         ]);
 
-        DB::transaction(function () use ($validated, $user) {
+        DB::transaction(function () use ($validated, $user): void {
             $project = Project::create([
                 'user_id' => $user->id,
                 'category_id' => $validated['category_id'] ?? null,
@@ -98,15 +105,20 @@ class ProjectController extends Controller
                 'status' => $validated['status'],
                 'start_date' => $validated['start_date'] ?? null,
                 'target_date' => $validated['target_date'] ?? null,
+                'reminders_enabled' => $validated['reminders_enabled'] ?? true,
+                'reminder_days' => $validated['reminder_days'] ?? null,
+                'overdue_reminders_enabled' => $validated['overdue_reminders_enabled'] ?? true,
                 'notes' => $validated['notes'] ?? null,
             ]);
 
-            if (!empty($validated['milestones'])) {
+            if (! empty($validated['milestones'])) {
                 foreach ($validated['milestones'] as $idx => $m) {
                     ProjectMilestone::create([
                         'project_id' => $project->id,
                         'title' => $m['title'],
                         'due_date' => $m['due_date'] ?? null,
+                        'due_time' => ! empty($m['due_time']) ? substr((string) $m['due_time'], 0, 5) : null,
+                        'reminders_enabled' => $m['reminders_enabled'] ?? true,
                         'is_completed' => false,
                         'sort_order' => $idx + 1,
                     ]);
@@ -131,6 +143,10 @@ class ProjectController extends Controller
             'status' => 'required|in:planned,in_progress,on_hold,completed,archived',
             'start_date' => 'nullable|date',
             'target_date' => 'nullable|date',
+            'reminders_enabled' => 'nullable|boolean',
+            'reminder_days' => 'nullable|array',
+            'reminder_days.*' => 'integer|min:0|max:365',
+            'overdue_reminders_enabled' => 'nullable|boolean',
             'notes' => 'nullable|string',
         ]);
 
@@ -146,6 +162,10 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'due_date' => 'nullable|date',
+            'due_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'reminders_enabled' => 'nullable|boolean',
+            'reminder_offsets' => 'nullable|array',
+            'reminder_offsets.*' => 'integer|min:0|max:365',
         ]);
 
         $maxOrder = $project->milestones()->max('sort_order') ?? 0;
@@ -154,6 +174,9 @@ class ProjectController extends Controller
             'project_id' => $project->id,
             'title' => $validated['title'],
             'due_date' => $validated['due_date'] ?? null,
+            'due_time' => ! empty($validated['due_time']) ? substr((string) $validated['due_time'], 0, 5) : null,
+            'reminders_enabled' => $validated['reminders_enabled'] ?? true,
+            'reminder_offsets' => $validated['reminder_offsets'] ?? null,
             'is_completed' => false,
             'sort_order' => $maxOrder + 1,
         ]);
@@ -161,15 +184,21 @@ class ProjectController extends Controller
         return back()->with('success', 'Milestone added.');
     }
 
-    public function toggleMilestone(ProjectMilestone $milestone): RedirectResponse
+    public function toggleMilestone(ProjectMilestone $milestone, ReminderService $reminderService): RedirectResponse
     {
         $project = $milestone->project;
         $this->authorize('update', $project);
 
+        $becomingCompleted = ! $milestone->is_completed;
+
         $milestone->update([
-            'is_completed' => !$milestone->is_completed,
-            'completed_at' => !$milestone->is_completed ? now() : null,
+            'is_completed' => $becomingCompleted,
+            'completed_at' => $becomingCompleted ? now() : null,
         ]);
+
+        if ($becomingCompleted) {
+            $reminderService->notifyMilestoneCompleted($milestone);
+        }
 
         return back()->with('success', 'Milestone status updated.');
     }
@@ -188,7 +217,7 @@ class ProjectController extends Controller
     {
         $this->authorize('delete', $project);
 
-        DB::transaction(function () use ($project) {
+        DB::transaction(function () use ($project): void {
             Task::where('project_id', $project->id)->update(['project_id' => null]);
             $project->delete();
         });
@@ -196,4 +225,3 @@ class ProjectController extends Controller
         return redirect()->route('projects.index')->with('success', 'Project deleted.');
     }
 }
-

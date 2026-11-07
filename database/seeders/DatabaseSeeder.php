@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
         // Guard: Never seed default demo credentials or mock dataset in production
         if (app()->environment('production')) {
             $this->command?->warn('DatabaseSeeder: Skipping demo user and mock data in production environment.');
+
             return;
         }
 
@@ -256,8 +257,8 @@ class DatabaseSeeder extends Seeder
                 ]);
             }
 
-            if (!empty($tagNames)) {
-                $tagIds = collect($tagNames)->map(fn($tn) => $tagMap[$tn]->id ?? null)->filter();
+            if (! empty($tagNames)) {
+                $tagIds = collect($tagNames)->map(fn ($tn) => $tagMap[$tn]->id ?? null)->filter();
                 $task->tags()->sync($tagIds);
             }
         }

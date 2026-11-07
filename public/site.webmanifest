@@ -1,6 +1,13 @@
 {
     "name": "Personal Operations Hub",
     "short_name": "Ops Hub",
+    "description": "Local personal execution, scheduling, focus timer, and project operations hub.",
+    "start_url": "/dashboard",
+    "scope": "/",
+    "display": "standalone",
+    "orientation": "any",
+    "theme_color": "#4F46E5",
+    "background_color": "#0F172A",
     "icons": [
         {
             "src": "/favicon-16x16.png",
@@ -15,11 +22,13 @@
         {
             "src": "/apple-touch-icon.png",
             "sizes": "180x180",
-            "type": "image/png"
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/favicon.svg",
+            "sizes": "any",
+            "type": "image/svg+xml"
         }
-    ],
-    "theme_color": "#4F46E5",
-    "background_color": "#0F172A",
-    "display": "standalone"
+    ]
 }
-

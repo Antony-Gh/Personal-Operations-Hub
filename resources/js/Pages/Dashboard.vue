@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { Head, Link, router } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Category, Project, Task } from '@/types';
+import { Category, PageProps, Project, Task } from '@/types';
+import { getLocalDateString } from '@/utils/date';
+import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Calendar as CalendarIcon,
     AlertCircle,
@@ -13,10 +14,11 @@ import {
     Smartphone,
     Layers,
     FolderKanban,
-    Plus,
     ArrowUpRight,
     Flame,
     Check,
+    Timer,
+    Newspaper,
 } from 'lucide-vue-next';
 
 interface MetricData {
@@ -24,6 +26,8 @@ interface MetricData {
     overdueCount: number;
     completedTodayCount: number;
     upcomingCount: number;
+    focusMinutesToday?: number;
+    upcomingRemindersCount?: number;
 }
 
 interface HabitSummary {
@@ -32,6 +36,8 @@ interface HabitSummary {
     category: string;
     status: 'completed' | 'partial' | 'not_completed' | 'pending';
     notes: string | null;
+    current_streak?: number;
+    best_streak?: number;
 }
 
 const props = defineProps<{
@@ -50,20 +56,31 @@ const props = defineProps<{
     };
 }>();
 
+const page = usePage<PageProps>();
+const { startFocusSession } = useFocusTimer();
+
 const toggleTaskCompletion = (task: Task) => {
     router.post(route('tasks.toggle', task.id), {}, { preserveScroll: true });
 };
 
+const launchFocus = (task: Task) => {
+    void startFocusSession({
+        mode: 'focus',
+        planned_minutes: task.estimated_duration || page.props.auth.user?.setting?.focus_work_minutes || 25,
+        task_id: task.id,
+    });
+};
+
 const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | 'not_completed') => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateString(page.props.auth.user?.setting?.timezone);
     router.post(route('habits.check-in', habitId), { date: today, status }, { preserveScroll: true });
 };
 </script>
 
 <template>
-    <Head title="Dashboard" />
-
     <AuthenticatedLayout title="Dashboard">
+        <Head title="Dashboard" />
+
         <div class="max-w-7xl mx-auto space-y-6">
             <!-- Welcome & Date Header -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
@@ -71,12 +88,22 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                     <div class="flex items-center gap-2 text-xs font-medium text-neutral-500 dark:text-neutral-400 mb-1">
                         <CalendarIcon class="w-3.5 h-3.5" />
                         <span>{{ todayDate }}</span>
+                        <span v-if="metrics.focusMinutesToday" class="text-indigo-600 dark:text-indigo-400 font-semibold">
+                            • {{ metrics.focusMinutesToday }}m focused today
+                        </span>
                     </div>
                     <h2 class="text-xl font-bold tracking-tight text-neutral-900 dark:text-white">
                         Welcome, {{ $page.props.auth.user.setting?.display_name || $page.props.auth.user.name }}
                     </h2>
                 </div>
-                <div class="flex items-center gap-2.5">
+                <div class="flex items-center gap-2.5 flex-wrap">
+                    <Link
+                        :href="route('briefings.index')"
+                        class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-medium transition"
+                    >
+                        <Newspaper class="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Briefing</span>
+                    </Link>
                     <Link
                         :href="route('my-day.index')"
                         class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
@@ -99,7 +126,10 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                         {{ metrics.dueTodayCount }}
                     </div>
                     <div class="mt-1 text-[11px] text-neutral-400">
-                        Tasks needing action today
+                        <template v-if="metrics.upcomingRemindersCount">
+                            {{ metrics.upcomingRemindersCount }} reminder{{ metrics.upcomingRemindersCount === 1 ? '' : 's' }} queued today
+                        </template>
+                        <template v-else>Tasks needing action today</template>
                     </div>
                 </div>
 
@@ -127,7 +157,10 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                         {{ metrics.completedTodayCount }}
                     </div>
                     <div class="mt-1 text-[11px] text-neutral-400">
-                        Accomplished today
+                        <template v-if="metrics.focusMinutesToday">
+                            {{ metrics.focusMinutesToday }}m deep focus logged
+                        </template>
+                        <template v-else>Accomplished today</template>
                     </div>
                 </div>
 
@@ -181,6 +214,7 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                             >
                                 <span class="text-xs font-bold text-neutral-400 pt-0.5">#{{ idx + 1 }}</span>
                                 <button
+                                    type="button"
                                     @click="toggleTaskCompletion(task)"
                                     class="mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition"
                                     :class="task.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600 hover:border-indigo-500'"
@@ -199,17 +233,31 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                                             <span class="w-1.5 h-1.5 rounded-full" :style="{ backgroundColor: task.category.color }"></span>
                                             {{ task.category.name }}
                                         </span>
+                                        <span v-if="task.due_time" class="font-mono">
+                                            {{ task.due_time }}
+                                        </span>
                                         <span v-if="task.next_action" class="text-neutral-500 dark:text-neutral-400 italic">
                                             Next: {{ task.next_action }}
                                         </span>
                                     </div>
                                 </div>
-                                <span
-                                    class="px-2 py-0.5 rounded text-[10px] uppercase font-semibold tracking-wider shrink-0"
-                                    :class="task.priority === 'high' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'"
-                                >
-                                    {{ task.priority }}
-                                </span>
+                                <div class="flex items-center gap-1.5 shrink-0">
+                                    <button
+                                        v-if="task.status !== 'completed'"
+                                        type="button"
+                                        @click="launchFocus(task)"
+                                        class="p-1 rounded-md text-neutral-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/60 transition"
+                                        title="Start Focus Session"
+                                    >
+                                        <Timer class="w-3.5 h-3.5" />
+                                    </button>
+                                    <span
+                                        class="px-2 py-0.5 rounded text-[10px] uppercase font-semibold tracking-wider"
+                                        :class="task.priority === 'high' ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400' : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'"
+                                    >
+                                        {{ task.priority }}
+                                    </span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -239,6 +287,7 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                             >
                                 <div class="flex items-center gap-2.5 min-w-0">
                                     <button
+                                        type="button"
                                         @click="toggleTaskCompletion(task)"
                                         class="w-4 h-4 rounded border border-rose-400 flex items-center justify-center shrink-0"
                                     >
@@ -262,6 +311,7 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                             >
                                 <div class="flex items-center gap-2.5 min-w-0">
                                     <button
+                                        type="button"
                                         @click="toggleTaskCompletion(task)"
                                         class="w-4 h-4 rounded border flex items-center justify-center shrink-0 transition"
                                         :class="task.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600 hover:border-indigo-500'"
@@ -276,12 +326,24 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                                     </span>
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
+                                    <span v-if="task.due_time" class="text-[10px] font-mono text-neutral-500">
+                                        {{ task.due_time }}
+                                    </span>
                                     <span v-if="task.category" class="text-[10px] px-2 py-0.5 rounded font-medium" :style="{ backgroundColor: (task.category.color || '#6366f1') + '15', color: task.category.color || '#6366f1' }">
                                         {{ task.category.name }}
                                     </span>
                                     <span v-if="task.estimated_duration" class="text-[10px] text-neutral-400">
                                         {{ task.estimated_duration }}m
                                     </span>
+                                    <button
+                                        v-if="task.status !== 'completed'"
+                                        type="button"
+                                        @click="launchFocus(task)"
+                                        class="p-1 rounded text-neutral-400 hover:text-indigo-600"
+                                        title="Start Focus Timer"
+                                    >
+                                        <Timer class="w-3.5 h-3.5" />
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -357,11 +419,20 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                                 class="flex items-center justify-between p-2.5 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30"
                             >
                                 <div>
-                                    <p class="text-xs font-medium text-neutral-900 dark:text-white">{{ habit.name }}</p>
+                                    <div class="flex items-center gap-1.5">
+                                        <p class="text-xs font-medium text-neutral-900 dark:text-white">{{ habit.name }}</p>
+                                        <span
+                                            v-if="(habit.current_streak || 0) > 0"
+                                            class="inline-flex items-center gap-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"
+                                        >
+                                            <Flame class="w-2.5 h-2.5" /> {{ habit.current_streak }}d
+                                        </span>
+                                    </div>
                                     <p class="text-[10px] text-neutral-400">{{ habit.category }}</p>
                                 </div>
                                 <div class="flex items-center gap-1.5">
                                     <button
+                                        type="button"
                                         @click="recordHabitCheckIn(habit.id, 'completed')"
                                         class="px-2 py-1 rounded text-[11px] font-medium transition"
                                         :class="habit.status === 'completed' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-neutral-100 text-neutral-600 hover:bg-emerald-50 hover:text-emerald-700 dark:bg-neutral-800 dark:text-neutral-400'"
@@ -370,6 +441,7 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                                         Done
                                     </button>
                                     <button
+                                        type="button"
                                         @click="recordHabitCheckIn(habit.id, 'partial')"
                                         class="px-2 py-1 rounded text-[11px] font-medium transition"
                                         :class="habit.status === 'partial' ? 'bg-amber-500 text-white shadow-xs' : 'bg-neutral-100 text-neutral-600 hover:bg-amber-50 hover:text-amber-700 dark:bg-neutral-800 dark:text-neutral-400'"

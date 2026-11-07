@@ -1,27 +1,27 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { ref } from 'vue';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Category, Project, Tag, Task, TaskChecklist } from '@/types';
+import TaskKanbanBoard from '@/Components/TaskKanbanBoard.vue';
+import { PageProps, Project, Tag, Task, TaskReminderPreset } from '@/types';
+import { getLocalDateTimeInputValue, isOverdueLocal } from '@/utils/date';
+import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Search,
-    Filter,
     Plus,
-    CheckSquare,
     Check,
     Clock,
     AlertCircle,
-    Calendar,
-    ChevronDown,
-    MoreHorizontal,
     Trash2,
     Copy,
     Edit3,
-    Tag as TagIcon,
-    FolderKanban,
     ListCheck,
     Repeat,
     X,
+    LayoutList,
+    Kanban,
+    Timer,
+    Bell,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -32,6 +32,8 @@ const props = defineProps<{
         current_page: number;
         last_page: number;
     };
+    kanbanTasks?: Task[];
+    viewMode?: 'list' | 'kanban';
     filters: {
         search?: string;
         status?: string;
@@ -41,12 +43,19 @@ const props = defineProps<{
         date_filter?: string;
         sort_by?: string;
         sort_dir?: string;
+        view?: string;
     };
     projects: Project[];
     tags: Tag[];
 }>();
 
-// Filter State
+const page = usePage<PageProps>();
+const { startFocusSession } = useFocusTimer();
+
+// Filter & View State
+const currentView = ref<'list' | 'kanban'>(
+    props.viewMode === 'kanban' || props.filters.view === 'kanban' ? 'kanban' : 'list'
+);
 const search = ref(props.filters.search || '');
 const status = ref(props.filters.status || '');
 const categoryId = ref(props.filters.category_id || '');
@@ -68,9 +77,15 @@ const applyFilters = () => {
             date_filter: dateFilter.value || undefined,
             sort_by: sortBy.value || undefined,
             sort_dir: sortDir.value || undefined,
+            view: currentView.value === 'kanban' ? 'kanban' : undefined,
         },
         { preserveState: true, replace: true }
     );
+};
+
+const switchView = (mode: 'list' | 'kanban') => {
+    currentView.value = mode;
+    applyFilters();
 };
 
 const resetFilters = () => {
@@ -121,6 +136,15 @@ const toggleTask = (task: Task) => {
     router.post(route('tasks.toggle', task.id), {}, { preserveScroll: true });
 };
 
+// Launch Focus Timer for Task
+const launchFocusForTask = (task: Task) => {
+    void startFocusSession({
+        mode: 'focus',
+        planned_minutes: task.estimated_duration || page.props.auth.user?.setting?.focus_work_minutes || 25,
+        task_id: task.id,
+    });
+};
+
 // Duplicate Task
 const duplicateTask = (task: Task) => {
     router.post(route('tasks.duplicate', task.id), {}, { preserveScroll: true });
@@ -137,6 +161,7 @@ const deleteTask = (task: Task) => {
 const activeTask = ref<Task | null>(null);
 const isEditing = ref(false);
 const newChecklistTitle = ref('');
+const newCustomReminderInput = ref('');
 
 const taskForm = useForm({
     title: '',
@@ -144,33 +169,57 @@ const taskForm = useForm({
     category_id: '' as string | number,
     project_id: '' as string | number,
     priority: 'medium' as 'high' | 'medium' | 'low',
-    status: 'not_started' as any,
+    status: 'not_started' as Task['status'],
     due_date: '',
+    due_time: '',
+    reminder_preset: 'none' as TaskReminderPreset,
+    remind_at: '',
+    custom_reminder_times: [] as string[],
     start_date: '',
     estimated_duration: null as number | null,
     actual_duration: null as number | null,
     notes: '',
     next_action: '',
     is_recurring: false,
-    recurrence_rule: '',
+    recurrence_rule: 'daily',
+    recurrence_interval: 1,
+    recurrence_end_type: 'never' as 'never' | 'on_date' | 'after_occurrences',
+    recurrence_end_date: '',
+    recurrence_max_occurrences: null as number | null,
     tag_ids: [] as number[],
     checklists: [] as { id?: number; title: string; is_completed?: boolean }[],
 });
 
 const openCreateModal = () => {
+    const setting = page.props.auth.user?.setting;
     activeTask.value = null;
     taskForm.reset();
     taskForm.title = '';
-    taskForm.priority = 'medium';
+    taskForm.priority = setting?.default_priority || 'medium';
     taskForm.status = 'not_started';
     taskForm.category_id = '';
     taskForm.project_id = '';
+    taskForm.due_date = '';
+    taskForm.due_time = '';
+    taskForm.reminder_preset = setting?.default_task_reminder_preset || 'none';
+    taskForm.remind_at = '';
+    taskForm.custom_reminder_times = [];
+    taskForm.estimated_duration = setting?.default_task_duration || 30;
+    taskForm.actual_duration = null;
+    taskForm.is_recurring = false;
+    taskForm.recurrence_rule = 'daily';
+    taskForm.recurrence_interval = 1;
+    taskForm.recurrence_end_type = 'never';
+    taskForm.recurrence_end_date = '';
+    taskForm.recurrence_max_occurrences = null;
     taskForm.tag_ids = [];
     taskForm.checklists = [];
+    newCustomReminderInput.value = '';
     isEditing.value = true;
 };
 
 const openEditModal = (task: Task) => {
+    const tz = page.props.auth.user?.setting?.timezone;
     activeTask.value = task;
     taskForm.title = task.title;
     taskForm.description = task.description || '';
@@ -179,20 +228,51 @@ const openEditModal = (task: Task) => {
     taskForm.priority = task.priority;
     taskForm.status = task.status;
     taskForm.due_date = task.due_date || '';
+    taskForm.due_time = task.due_time || '';
+    taskForm.reminder_preset = (task.reminder_preset as TaskReminderPreset) || 'none';
+    taskForm.remind_at = task.remind_at ? getLocalDateTimeInputValue(tz, new Date(task.remind_at)) : '';
+    taskForm.custom_reminder_times = Array.isArray(task.custom_reminder_times) ? [...task.custom_reminder_times] : [];
     taskForm.start_date = task.start_date || '';
     taskForm.estimated_duration = task.estimated_duration;
     taskForm.actual_duration = task.actual_duration;
     taskForm.notes = task.notes || '';
     taskForm.next_action = task.next_action || '';
     taskForm.is_recurring = task.is_recurring;
-    taskForm.recurrence_rule = task.recurrence_rule || '';
+    taskForm.recurrence_rule = task.recurrence_rule || 'daily';
+    taskForm.recurrence_interval = task.recurrence_interval || 1;
+    taskForm.recurrence_end_type = task.recurrence_end_type || 'never';
+    taskForm.recurrence_end_date = task.recurrence_end_date || '';
+    taskForm.recurrence_max_occurrences = task.recurrence_max_occurrences ?? null;
     taskForm.tag_ids = task.tags?.map((t) => t.id) || [];
-    taskForm.checklists = task.checklists?.map((c) => ({
-        id: c.id,
-        title: c.title,
-        is_completed: c.is_completed,
-    })) || [];
+    taskForm.checklists =
+        task.checklists?.map((c) => ({
+            id: c.id,
+            title: c.title,
+            is_completed: c.is_completed,
+        })) || [];
+    newCustomReminderInput.value = '';
     isEditing.value = true;
+};
+
+const toggleTagSelection = (tagId: number) => {
+    const idx = taskForm.tag_ids.indexOf(tagId);
+    if (idx >= 0) {
+        taskForm.tag_ids.splice(idx, 1);
+    } else {
+        taskForm.tag_ids.push(tagId);
+    }
+};
+
+const addCustomReminderTime = () => {
+    if (!newCustomReminderInput.value) return;
+    if (!taskForm.custom_reminder_times.includes(newCustomReminderInput.value)) {
+        taskForm.custom_reminder_times.push(newCustomReminderInput.value);
+    }
+    newCustomReminderInput.value = '';
+};
+
+const removeCustomReminderTime = (idx: number) => {
+    taskForm.custom_reminder_times.splice(idx, 1);
 };
 
 const addChecklistItem = () => {
@@ -228,21 +308,44 @@ const saveTask = () => {
 </script>
 
 <template>
-    <Head title="Tasks Management" />
-
     <AuthenticatedLayout title="Tasks">
+        <Head title="Tasks Management" />
+
         <div class="max-w-7xl mx-auto space-y-6">
-            <!-- Header with Search & Quick Filters -->
+            <!-- Header with View Switcher & Create Task -->
             <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
                 <div>
                     <h2 class="text-lg font-bold text-neutral-900 dark:text-white">All Tasks</h2>
                     <p class="text-xs text-neutral-400">
-                        {{ tasks.total }} tasks registered across all areas
+                        {{ tasks.total }} tasks matching current scope • Priority, reminders, recurrence & focus tracking
                     </p>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <!-- List vs Kanban Toggle -->
+                    <div class="flex items-center border border-neutral-200 dark:border-neutral-800 rounded-xl p-0.5 bg-neutral-100/60 dark:bg-neutral-800/60">
+                        <button
+                            type="button"
+                            @click="switchView('list')"
+                            class="px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition"
+                            :class="currentView === 'list' ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'"
+                        >
+                            <LayoutList class="w-3.5 h-3.5" />
+                            <span>List</span>
+                        </button>
+                        <button
+                            type="button"
+                            @click="switchView('kanban')"
+                            class="px-3 py-1.5 rounded-lg text-xs font-medium inline-flex items-center gap-1.5 transition"
+                            :class="currentView === 'kanban' ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800 dark:text-neutral-400'"
+                        >
+                            <Kanban class="w-3.5 h-3.5" />
+                            <span>Kanban</span>
+                        </button>
+                    </div>
+
                     <button
+                        type="button"
                         @click="openCreateModal"
                         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
                     >
@@ -254,7 +357,7 @@ const saveTask = () => {
 
             <!-- Filters & Search Toolbar -->
             <div class="bg-white dark:bg-neutral-900 p-4 rounded-xl border border-neutral-200 dark:border-neutral-800 space-y-3">
-                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+                <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3">
                     <!-- Search Input -->
                     <div class="sm:col-span-2 relative">
                         <Search class="w-4 h-4 text-neutral-400 absolute left-3 top-2.5" />
@@ -262,7 +365,7 @@ const saveTask = () => {
                             v-model="search"
                             @input="applyFilters"
                             type="text"
-                            placeholder="Search tasks, descriptions..."
+                            placeholder="Search tasks, actions..."
                             class="w-full pl-9 text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
                         />
                     </div>
@@ -278,6 +381,20 @@ const saveTask = () => {
                             <option v-for="cat in $page.props.categories" :key="cat.id" :value="cat.id">
                                 {{ cat.name }}
                             </option>
+                        </select>
+                    </div>
+
+                    <!-- Priority Filter -->
+                    <div>
+                        <select
+                            v-model="priority"
+                            @change="applyFilters"
+                            class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                            <option value="">All Priorities</option>
+                            <option value="high">High Priority</option>
+                            <option value="medium">Medium Priority</option>
+                            <option value="low">Low Priority</option>
                         </select>
                     </div>
 
@@ -330,8 +447,16 @@ const saveTask = () => {
 
                 <!-- Reset Filters Option -->
                 <div class="flex items-center justify-between text-xs pt-1">
-                    <span class="text-neutral-400">Showing page {{ tasks.current_page }} of {{ tasks.last_page }}</span>
+                    <span class="text-neutral-400">
+                        <template v-if="currentView === 'list'">
+                            Showing page {{ tasks.current_page }} of {{ tasks.last_page }}
+                        </template>
+                        <template v-else>
+                            Showing {{ (kanbanTasks || tasks.data).length }} tasks on Kanban board
+                        </template>
+                    </span>
                     <button
+                        type="button"
                         @click="resetFilters"
                         class="text-indigo-600 dark:text-indigo-400 hover:underline"
                     >
@@ -340,9 +465,9 @@ const saveTask = () => {
                 </div>
             </div>
 
-            <!-- Bulk Actions Bar (if any selected) -->
+            <!-- Bulk Actions Bar (List View) -->
             <div
-                v-if="selectedTaskIds.length > 0"
+                v-if="currentView === 'list' && selectedTaskIds.length > 0"
                 class="flex items-center justify-between bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 px-4 py-2.5 rounded-xl text-xs"
             >
                 <span class="font-medium text-indigo-900 dark:text-indigo-200">
@@ -350,18 +475,21 @@ const saveTask = () => {
                 </span>
                 <div class="flex items-center gap-2">
                     <button
+                        type="button"
                         @click="executeBulkAction('complete')"
                         class="px-2.5 py-1 bg-white dark:bg-neutral-800 rounded text-neutral-700 dark:text-neutral-300 font-medium hover:bg-neutral-100 shadow-xs"
                     >
                         Mark Completed
                     </button>
                     <button
+                        type="button"
                         @click="executeBulkAction('reopen')"
                         class="px-2.5 py-1 bg-white dark:bg-neutral-800 rounded text-neutral-700 dark:text-neutral-300 font-medium hover:bg-neutral-100 shadow-xs"
                     >
                         Reopen
                     </button>
                     <button
+                        type="button"
                         @click="executeBulkAction('delete')"
                         class="px-2.5 py-1 bg-rose-600 text-white rounded font-medium hover:bg-rose-700 shadow-xs"
                     >
@@ -370,8 +498,16 @@ const saveTask = () => {
                 </div>
             </div>
 
-            <!-- Tasks Table / List View -->
-            <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-xs">
+            <!-- KANBAN BOARD VIEW -->
+            <TaskKanbanBoard
+                v-if="currentView === 'kanban'"
+                :tasks="kanbanTasks || tasks.data"
+                @edit-task="openEditModal"
+                @toggle-task="toggleTask"
+            />
+
+            <!-- TASKS TABLE / LIST VIEW -->
+            <div v-else class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 overflow-hidden shadow-xs">
                 <div class="overflow-x-auto">
                     <table class="w-full text-left text-xs">
                         <thead class="bg-neutral-50 dark:bg-neutral-800/50 text-neutral-500 uppercase tracking-wider text-[10px] border-b border-neutral-200 dark:border-neutral-800">
@@ -390,7 +526,7 @@ const saveTask = () => {
                                 <th class="p-3">Project</th>
                                 <th class="p-3">Priority</th>
                                 <th class="p-3">Status</th>
-                                <th class="p-3">Due Date</th>
+                                <th class="p-3">Due / Focus</th>
                                 <th class="p-3 text-right">Actions</th>
                             </tr>
                         </thead>
@@ -418,6 +554,7 @@ const saveTask = () => {
                                 <!-- Status Toggle Checkbox -->
                                 <td class="p-3">
                                     <button
+                                        type="button"
                                         @click="toggleTask(task)"
                                         class="w-4 h-4 rounded border flex items-center justify-center transition"
                                         :class="task.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600 hover:border-indigo-500'"
@@ -441,10 +578,17 @@ const saveTask = () => {
                                         </span>
                                         <span v-if="task.checklists?.length" class="inline-flex items-center gap-1 text-[10px]">
                                             <ListCheck class="w-3 h-3" />
-                                            {{ task.checklists.filter(c => c.is_completed).length }}/{{ task.checklists.length }}
+                                            {{ task.checklists.filter((c) => c.is_completed).length }}/{{ task.checklists.length }}
                                         </span>
                                         <span v-if="task.is_recurring" class="inline-flex items-center gap-0.5 text-[10px] text-indigo-500">
-                                            <Repeat class="w-3 h-3" /> Recurring
+                                            <Repeat class="w-3 h-3" /> {{ task.recurrence_rule || 'Recurring' }}
+                                        </span>
+                                        <span
+                                            v-if="task.reminder_preset && task.reminder_preset !== 'none'"
+                                            class="inline-flex items-center gap-0.5 text-[10px] text-amber-600 dark:text-amber-400"
+                                            title="Reminder enabled"
+                                        >
+                                            <Bell class="w-3 h-3" />
                                         </span>
                                         <span v-for="tag in task.tags" :key="tag.id" class="px-1.5 py-0.2 rounded text-[9px] bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
                                             #{{ tag.name }}
@@ -492,18 +636,47 @@ const saveTask = () => {
                                     {{ task.status.replace('_', ' ') }}
                                 </td>
 
-                                <!-- Due Date -->
+                                <!-- Due Date & Duration -->
                                 <td class="p-3 whitespace-nowrap">
-                                    <span v-if="task.due_date" class="font-mono text-[11px] text-neutral-700 dark:text-neutral-300">
-                                        {{ task.due_date }}
-                                    </span>
+                                    <div v-if="task.due_date" class="flex items-center gap-1">
+                                        <AlertCircle
+                                            v-if="isOverdueLocal(task.due_date, task.status, $page.props.auth.user?.setting?.timezone)"
+                                            class="w-3.5 h-3.5 text-rose-500 shrink-0"
+                                        />
+                                        <span
+                                            class="font-mono text-[11px]"
+                                            :class="
+                                                isOverdueLocal(task.due_date, task.status, $page.props.auth.user?.setting?.timezone)
+                                                    ? 'text-rose-600 dark:text-rose-400 font-semibold'
+                                                    : 'text-neutral-700 dark:text-neutral-300'
+                                            "
+                                        >
+                                            {{ task.due_date }}<template v-if="task.due_time"> {{ task.due_time }}</template>
+                                        </span>
+                                    </div>
                                     <span v-else class="text-neutral-400">-</span>
+                                    <div v-if="task.estimated_duration || task.actual_duration" class="text-[10px] text-neutral-400 flex items-center gap-1 mt-0.5">
+                                        <Clock class="w-2.5 h-2.5" />
+                                        <span>
+                                            <template v-if="task.actual_duration">{{ task.actual_duration }}m / </template>{{ task.estimated_duration || 0 }}m
+                                        </span>
+                                    </div>
                                 </td>
 
                                 <!-- Row Actions -->
                                 <td class="p-3 text-right whitespace-nowrap">
                                     <div class="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
                                         <button
+                                            v-if="task.status !== 'completed'"
+                                            type="button"
+                                            @click="launchFocusForTask(task)"
+                                            class="p-1 rounded text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                            title="Start Focus Timer"
+                                        >
+                                            <Timer class="w-3.5 h-3.5" />
+                                        </button>
+                                        <button
+                                            type="button"
                                             @click="openEditModal(task)"
                                             class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
                                             title="Edit task"
@@ -511,6 +684,7 @@ const saveTask = () => {
                                             <Edit3 class="w-3.5 h-3.5" />
                                         </button>
                                         <button
+                                            type="button"
                                             @click="duplicateTask(task)"
                                             class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
                                             title="Duplicate task"
@@ -518,6 +692,7 @@ const saveTask = () => {
                                             <Copy class="w-3.5 h-3.5" />
                                         </button>
                                         <button
+                                            type="button"
                                             @click="deleteTask(task)"
                                             class="p-1 rounded text-neutral-400 hover:text-rose-500"
                                             title="Delete task"
@@ -538,6 +713,7 @@ const saveTask = () => {
                         <button
                             v-for="(link, i) in tasks.links"
                             :key="i"
+                            type="button"
                             :disabled="!link.url"
                             @click="router.get(link.url)"
                             class="px-2.5 py-1 rounded text-xs transition"
@@ -559,7 +735,7 @@ const saveTask = () => {
                         <h3 class="text-base font-bold text-neutral-900 dark:text-white">
                             {{ activeTask ? 'Edit Task' : 'Create Task' }}
                         </h3>
-                        <button @click="isEditing = false" class="p-1 text-neutral-400 hover:text-neutral-600">
+                        <button type="button" @click="isEditing = false" class="p-1 text-neutral-400 hover:text-neutral-600">
                             <X class="w-5 h-5" />
                         </button>
                     </div>
@@ -616,7 +792,7 @@ const saveTask = () => {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
                             <!-- Priority -->
                             <div>
                                 <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Priority</label>
@@ -654,6 +830,16 @@ const saveTask = () => {
                                     class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                                 />
                             </div>
+
+                            <!-- Due Time -->
+                            <div>
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Due Time</label>
+                                <input
+                                    v-model="taskForm.due_time"
+                                    type="time"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                />
+                            </div>
                         </div>
 
                         <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -670,16 +856,90 @@ const saveTask = () => {
                                 <input
                                     v-model.number="taskForm.estimated_duration"
                                     type="number"
+                                    min="1"
                                     class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                                 />
                             </div>
                             <div>
-                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Actual Duration (min)</label>
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Logged Focus (min)</label>
                                 <input
                                     v-model.number="taskForm.actual_duration"
                                     type="number"
+                                    min="0"
                                     class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                                 />
+                            </div>
+                        </div>
+
+                        <!-- Reminders & Alarms -->
+                        <div class="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 space-y-3">
+                            <div class="flex items-center gap-2 font-semibold text-neutral-800 dark:text-neutral-200">
+                                <Bell class="w-3.5 h-3.5 text-indigo-500" />
+                                <span>Reminders & Deadline Alarms</span>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                                        Primary Reminder Preset
+                                    </label>
+                                    <select
+                                        v-model="taskForm.reminder_preset"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    >
+                                        <option value="none">None</option>
+                                        <option value="at_due">At due time (default 09:00)</option>
+                                        <option value="15m">15 minutes before</option>
+                                        <option value="30m">30 minutes before</option>
+                                        <option value="1h">1 hour before</option>
+                                        <option value="1d">1 day before</option>
+                                        <option value="custom">Custom date & time</option>
+                                    </select>
+                                </div>
+
+                                <div v-if="taskForm.reminder_preset === 'custom'">
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                                        Custom Reminder Date/Time
+                                    </label>
+                                    <input
+                                        v-model="taskForm.remind_at"
+                                        type="datetime-local"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    />
+                                </div>
+                            </div>
+
+                            <!-- Additional Multiple Reminders -->
+                            <div>
+                                <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">
+                                    Additional Custom Reminders (optional)
+                                </label>
+                                <div v-if="taskForm.custom_reminder_times.length > 0" class="flex flex-wrap gap-1.5 mb-2">
+                                    <span
+                                        v-for="(rt, idx) in taskForm.custom_reminder_times"
+                                        :key="idx"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 text-[11px]"
+                                    >
+                                        <span>{{ rt.replace('T', ' ') }}</span>
+                                        <button type="button" @click="removeCustomReminderTime(idx)" class="hover:text-rose-500">
+                                            <X class="w-3 h-3" />
+                                        </button>
+                                    </span>
+                                </div>
+                                <div class="flex gap-2">
+                                    <input
+                                        v-model="newCustomReminderInput"
+                                        type="datetime-local"
+                                        class="flex-1 text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    />
+                                    <button
+                                        type="button"
+                                        @click="addCustomReminderTime"
+                                        class="px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-300 font-medium hover:bg-neutral-100"
+                                    >
+                                        + Add Alarm
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -692,6 +952,27 @@ const saveTask = () => {
                                 placeholder="e.g. Check solder connection on pin 4"
                                 class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                             />
+                        </div>
+
+                        <!-- Tags -->
+                        <div v-if="tags.length > 0">
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Tags</label>
+                            <div class="flex flex-wrap gap-1.5">
+                                <button
+                                    v-for="tag in tags"
+                                    :key="tag.id"
+                                    type="button"
+                                    @click="toggleTagSelection(tag.id)"
+                                    class="px-2.5 py-1 rounded-full text-[11px] font-medium border transition"
+                                    :class="
+                                        taskForm.tag_ids.includes(tag.id)
+                                            ? 'bg-indigo-600 text-white border-indigo-600'
+                                            : 'bg-neutral-50 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                                    "
+                                >
+                                    #{{ tag.name }}
+                                </button>
+                            </div>
                         </div>
 
                         <!-- Subtasks / Checklists -->
@@ -740,26 +1021,78 @@ const saveTask = () => {
                             </div>
                         </div>
 
-                        <!-- Recurrence -->
-                        <div class="pt-2 border-t border-neutral-100 dark:border-neutral-800 flex items-center gap-4">
+                        <!-- Recurrence Engine -->
+                        <div class="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 space-y-3">
                             <label class="flex items-center gap-2 cursor-pointer">
                                 <input
                                     type="checkbox"
                                     v-model="taskForm.is_recurring"
                                     class="rounded text-indigo-600 border-neutral-300"
                                 />
-                                <span class="font-medium text-neutral-700 dark:text-neutral-300">Recurring Task</span>
+                                <Repeat class="w-3.5 h-3.5 text-indigo-500" />
+                                <span class="font-semibold text-neutral-800 dark:text-neutral-200">Recurring Task</span>
                             </label>
 
-                            <select
-                                v-if="taskForm.is_recurring"
-                                v-model="taskForm.recurrence_rule"
-                                class="text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
-                            >
-                                <option value="daily">Daily</option>
-                                <option value="weekly">Weekly</option>
-                                <option value="monthly">Monthly</option>
-                            </select>
+                            <div v-if="taskForm.is_recurring" class="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                                <div>
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">Pattern</label>
+                                    <select
+                                        v-model="taskForm.recurrence_rule"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    >
+                                        <option value="daily">Daily</option>
+                                        <option value="weekdays">Weekdays (Mon–Fri)</option>
+                                        <option value="weekly">Weekly</option>
+                                        <option value="monthly">Monthly</option>
+                                        <option value="custom_days">Every X Days</option>
+                                        <option value="custom_weeks">Every X Weeks</option>
+                                        <option value="custom_months">Every X Months</option>
+                                    </select>
+                                </div>
+
+                                <div v-if="['custom_days', 'custom_weeks', 'custom_months'].includes(taskForm.recurrence_rule)">
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">Interval (X)</label>
+                                    <input
+                                        v-model.number="taskForm.recurrence_interval"
+                                        type="number"
+                                        min="1"
+                                        max="365"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    />
+                                </div>
+
+                                <div>
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">Ends</label>
+                                    <select
+                                        v-model="taskForm.recurrence_end_type"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    >
+                                        <option value="never">Never</option>
+                                        <option value="on_date">On specific date</option>
+                                        <option value="after_occurrences">After N occurrences</option>
+                                    </select>
+                                </div>
+
+                                <div v-if="taskForm.recurrence_end_type === 'on_date'">
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">End Date</label>
+                                    <input
+                                        v-model="taskForm.recurrence_end_date"
+                                        type="date"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    />
+                                </div>
+
+                                <div v-if="taskForm.recurrence_end_type === 'after_occurrences'">
+                                    <label class="block text-[11px] font-medium text-neutral-600 dark:text-neutral-400 mb-1">Max Occurrences</label>
+                                    <input
+                                        v-model.number="taskForm.recurrence_max_occurrences"
+                                        type="number"
+                                        min="1"
+                                        max="999"
+                                        class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                    />
+                                </div>
+                            </div>
                         </div>
 
                         <!-- Submit Buttons -->
@@ -785,4 +1118,3 @@ const saveTask = () => {
         </div>
     </AuthenticatedLayout>
 </template>
-

@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Head, Link, useForm } from '@inertiajs/vue3';
+import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Category, Project } from '@/types';
+import { Category, PageProps, Project } from '@/types';
+import { getLocalDateString } from '@/utils/date';
 import {
     FolderKanban,
     Plus,
     LayoutList,
     Kanban,
-    Calendar,
-    CheckCircle2,
-    Clock,
-    ArrowUpRight,
+    Bell,
     X,
 } from 'lucide-vue-next';
 
@@ -24,35 +22,75 @@ const props = defineProps<{
     categories: Category[];
 }>();
 
+const page = usePage<PageProps>();
+
 const viewMode = ref<'grid' | 'kanban'>('grid');
 const isCreateOpen = ref(false);
+
+const defaultReminderDays = () => {
+    const days = page.props.auth.user?.setting?.project_reminder_days;
+    return Array.isArray(days) && days.length > 0 ? [...days] : [7, 3, 1, 0];
+};
 
 const projectForm = useForm({
     name: '',
     category_id: '' as string | number,
     description: '',
     status: 'in_progress',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: getLocalDateString(page.props.auth.user?.setting?.timezone),
     target_date: '',
+    reminders_enabled: true,
+    reminder_days: defaultReminderDays(),
+    overdue_reminders_enabled: true,
     notes: '',
-    milestones: [] as { title: string; due_date: string }[],
+    milestones: [] as { title: string; due_date: string; due_time?: string; reminders_enabled?: boolean }[],
 });
 
 const newMilestoneTitle = ref('');
 const newMilestoneDate = ref('');
+const newMilestoneTime = ref('');
+
+const reminderDayOptions = [
+    { days: 7, label: '7 days before' },
+    { days: 3, label: '3 days before' },
+    { days: 1, label: '1 day before' },
+    { days: 0, label: 'On target day' },
+];
+
+const toggleProjectReminderDay = (day: number) => {
+    const idx = projectForm.reminder_days.indexOf(day);
+    if (idx >= 0) {
+        projectForm.reminder_days.splice(idx, 1);
+    } else {
+        projectForm.reminder_days.push(day);
+    }
+};
 
 const addMilestone = () => {
     if (!newMilestoneTitle.value.trim()) return;
     projectForm.milestones.push({
         title: newMilestoneTitle.value.trim(),
         due_date: newMilestoneDate.value || '',
+        due_time: newMilestoneTime.value || undefined,
+        reminders_enabled: true,
     });
     newMilestoneTitle.value = '';
     newMilestoneDate.value = '';
+    newMilestoneTime.value = '';
 };
 
 const removeMilestone = (idx: number) => {
     projectForm.milestones.splice(idx, 1);
+};
+
+const openCreateProject = () => {
+    projectForm.reset();
+    projectForm.start_date = getLocalDateString(page.props.auth.user?.setting?.timezone);
+    projectForm.reminders_enabled = true;
+    projectForm.reminder_days = defaultReminderDays();
+    projectForm.overdue_reminders_enabled = true;
+    projectForm.milestones = [];
+    isCreateOpen.value = true;
 };
 
 const submitProject = () => {
@@ -74,9 +112,9 @@ const kanbanColumns = [
 </script>
 
 <template>
-    <Head title="Projects" />
-
     <AuthenticatedLayout title="Projects">
+        <Head title="Projects" />
+
         <div class="max-w-7xl mx-auto space-y-6">
             <!-- Header -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
@@ -87,7 +125,7 @@ const kanbanColumns = [
                     <div>
                         <h2 class="text-lg font-bold text-neutral-900 dark:text-white">Active Projects</h2>
                         <p class="text-xs text-neutral-400">
-                            Engineering initiatives, academic research, and company deliveries
+                            Engineering initiatives, academic research, and milestone deadline alarms
                         </p>
                     </div>
                 </div>
@@ -96,6 +134,7 @@ const kanbanColumns = [
                     <!-- View Mode Toggle -->
                     <div class="flex items-center border border-neutral-200 dark:border-neutral-800 rounded-xl p-0.5 bg-neutral-100/50 dark:bg-neutral-800/50">
                         <button
+                            type="button"
                             @click="viewMode = 'grid'"
                             class="px-2.5 py-1.5 rounded-lg text-xs font-medium transition"
                             :class="viewMode === 'grid' ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800'"
@@ -103,6 +142,7 @@ const kanbanColumns = [
                             <LayoutList class="w-3.5 h-3.5 inline mr-1" /> Cards
                         </button>
                         <button
+                            type="button"
                             @click="viewMode = 'kanban'"
                             class="px-2.5 py-1.5 rounded-lg text-xs font-medium transition"
                             :class="viewMode === 'kanban' ? 'bg-white dark:bg-neutral-900 text-neutral-900 dark:text-white shadow-xs' : 'text-neutral-500 hover:text-neutral-800'"
@@ -112,7 +152,8 @@ const kanbanColumns = [
                     </div>
 
                     <button
-                        @click="isCreateOpen = true"
+                        type="button"
+                        @click="openCreateProject"
                         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
                     >
                         <Plus class="w-4 h-4" />
@@ -170,7 +211,10 @@ const kanbanColumns = [
 
                         <div class="flex items-center justify-between text-[11px] text-neutral-400 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                             <span>{{ project.completed_tasks_count }} / {{ project.total_tasks_count }} tasks</span>
-                            <span v-if="project.target_date">Target: {{ project.target_date }}</span>
+                            <span v-if="project.target_date" class="inline-flex items-center gap-1">
+                                <Bell v-if="project.reminders_enabled" class="w-3 h-3 text-amber-500" />
+                                Target: {{ project.target_date }}
+                            </span>
                         </div>
                     </div>
                 </Link>
@@ -188,13 +232,13 @@ const kanbanColumns = [
                             {{ col.label }}
                         </h4>
                         <span class="text-xs text-neutral-400 font-mono">
-                            {{ projects.filter(p => p.status === col.key).length }}
+                            {{ projects.filter((p) => p.status === col.key).length }}
                         </span>
                     </div>
 
                     <div class="space-y-3">
                         <Link
-                            v-for="project in projects.filter(p => p.status === col.key)"
+                            v-for="project in projects.filter((p) => p.status === col.key)"
                             :key="project.id"
                             :href="route('projects.show', project.id)"
                             class="block bg-white dark:bg-neutral-900 p-3.5 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 shadow-xs transition"
@@ -226,7 +270,7 @@ const kanbanColumns = [
                 <div class="bg-white dark:bg-neutral-900 rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 space-y-4">
                     <div class="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
                         <h3 class="text-base font-bold text-neutral-900 dark:text-white">Create Project</h3>
-                        <button @click="isCreateOpen = false" class="p-1 text-neutral-400 hover:text-neutral-600">
+                        <button type="button" @click="isCreateOpen = false" class="p-1 text-neutral-400 hover:text-neutral-600">
                             <X class="w-5 h-5" />
                         </button>
                     </div>
@@ -299,6 +343,49 @@ const kanbanColumns = [
                             </div>
                         </div>
 
+                        <!-- Deadline Reminder Configuration -->
+                        <div class="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 space-y-2.5">
+                            <div class="flex items-center justify-between">
+                                <label class="inline-flex items-center gap-2 cursor-pointer font-semibold text-neutral-800 dark:text-neutral-200">
+                                    <input
+                                        type="checkbox"
+                                        v-model="projectForm.reminders_enabled"
+                                        class="rounded text-indigo-600 border-neutral-300"
+                                    />
+                                    <Bell class="w-3.5 h-3.5 text-indigo-500" />
+                                    <span>Project Deadline Reminders</span>
+                                </label>
+                            </div>
+
+                            <div v-if="projectForm.reminders_enabled" class="space-y-2 pt-1">
+                                <div class="flex flex-wrap gap-1.5">
+                                    <button
+                                        v-for="opt in reminderDayOptions"
+                                        :key="opt.days"
+                                        type="button"
+                                        @click="toggleProjectReminderDay(opt.days)"
+                                        class="px-2.5 py-1 rounded-lg text-[11px] font-medium border transition"
+                                        :class="
+                                            projectForm.reminder_days.includes(opt.days)
+                                                ? 'bg-indigo-600 text-white border-indigo-600'
+                                                : 'bg-white dark:bg-neutral-900 text-neutral-600 dark:text-neutral-300 border-neutral-200 dark:border-neutral-700'
+                                        "
+                                    >
+                                        {{ opt.label }}
+                                    </button>
+                                </div>
+
+                                <label class="inline-flex items-center gap-2 cursor-pointer text-[11px] text-neutral-600 dark:text-neutral-400">
+                                    <input
+                                        type="checkbox"
+                                        v-model="projectForm.overdue_reminders_enabled"
+                                        class="rounded text-indigo-600 border-neutral-300"
+                                    />
+                                    <span>Send overdue project alert if past target date</span>
+                                </label>
+                            </div>
+                        </div>
+
                         <!-- Milestones -->
                         <div>
                             <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Initial Milestones</label>
@@ -310,7 +397,9 @@ const kanbanColumns = [
                                 >
                                     <div>
                                         <p class="font-medium text-neutral-900 dark:text-white">{{ m.title }}</p>
-                                        <p v-if="m.due_date" class="text-[10px] text-neutral-400">Due: {{ m.due_date }}</p>
+                                        <p v-if="m.due_date" class="text-[10px] text-neutral-400">
+                                            Due: {{ m.due_date }}<template v-if="m.due_time"> {{ m.due_time }}</template>
+                                        </p>
                                     </div>
                                     <button
                                         type="button"
@@ -321,7 +410,7 @@ const kanbanColumns = [
                                     </button>
                                 </div>
                             </div>
-                            <div class="flex gap-2">
+                            <div class="flex flex-wrap sm:flex-nowrap gap-2">
                                 <input
                                     v-model="newMilestoneTitle"
                                     type="text"
@@ -331,6 +420,11 @@ const kanbanColumns = [
                                 <input
                                     v-model="newMilestoneDate"
                                     type="date"
+                                    class="text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                />
+                                <input
+                                    v-model="newMilestoneTime"
+                                    type="time"
                                     class="text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                                 />
                                 <button
@@ -365,4 +459,3 @@ const kanbanColumns = [
         </div>
     </AuthenticatedLayout>
 </template>
-

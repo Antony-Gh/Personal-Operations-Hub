@@ -71,10 +71,11 @@ class CategoryController extends Controller
         $this->authorize('update', $category);
 
         $category->update([
-            'is_archived' => !$category->is_archived,
+            'is_archived' => ! $category->is_archived,
         ]);
 
         $status = $category->is_archived ? 'archived' : 'restored';
+
         return back()->with('success', "Area {$status} successfully.");
     }
 
@@ -127,4 +128,3 @@ class CategoryController extends Controller
         return back()->with('success', 'Area deleted successfully.');
     }
 }
-

@@ -51,4 +51,3 @@ it('updates fallback plan and personal recovery notes', function () {
     expect($plan->fresh()->fallback_plan)->toBe('Focus strictly on assignment submission');
     expect($plan->fresh()->personal_recovery_notes)->toBe('15 minute evening stroll');
 });
-

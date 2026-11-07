@@ -72,4 +72,3 @@ it('logs leisure phone usage minutes', function () {
     expect($log)->not->toBeNull();
     expect($log->minutes)->toBe(40);
 });
-

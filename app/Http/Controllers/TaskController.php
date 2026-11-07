@@ -6,7 +6,10 @@ use App\Models\Project;
 use App\Models\Tag;
 use App\Models\Task;
 use App\Models\TaskChecklist;
+use App\Services\RecurringTaskService;
+use App\Support\UserDateTime;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,13 +22,15 @@ class TaskController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
+        $localToday = $user->localToday();
+        $today = $localToday->toDateString();
 
         $query = Task::with(['category', 'project', 'tags', 'checklists'])
             ->where('user_id', $user->id);
 
         // Search query
         if ($search = $request->input('search')) {
-            $query->where(function ($q) use ($search) {
+            $query->where(function ($q) use ($search): void {
                 $q->where('title', 'like', "%{$search}%")
                     ->orWhere('description', 'like', "%{$search}%")
                     ->orWhere('next_action', 'like', "%{$search}%");
@@ -60,31 +65,35 @@ class TaskController extends Controller
 
         // Date view filter
         $dateFilter = $request->input('date_filter');
-        $today = Carbon::today()->toDateString();
         if ($dateFilter === 'today') {
             $query->where('due_date', $today);
         } elseif ($dateFilter === 'overdue') {
             $query->where('due_date', '<', $today)->where('status', '!=', 'completed');
         } elseif ($dateFilter === 'upcoming') {
             $query->where('due_date', '>', $today)
-                ->where('due_date', '<=', Carbon::today()->addDays(7)->toDateString())
+                ->where('due_date', '<=', $localToday->copy()->addDays(7)->toDateString())
                 ->where('status', '!=', 'completed');
         } elseif ($dateFilter === 'unscheduled') {
             $query->whereNull('due_date');
         }
 
         // Sorting
-        $sortBy = $request->input('sort_by', 'due_date');
-        $sortDir = $request->input('sort_dir', 'asc');
+        $sortBy = (string) $request->input('sort_by', 'due_date');
+        $sortDir = strtolower((string) $request->input('sort_dir', 'asc')) === 'desc' ? 'desc' : 'asc';
 
         if ($sortBy === 'priority') {
-            $query->orderByRaw("CASE priority WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END {$sortDir}");
-        } elseif (in_array($sortBy, ['title', 'created_at', 'due_date'])) {
+            $query->orderByPriority($sortDir)->orderBy('due_date', 'asc');
+        } elseif (in_array($sortBy, ['title', 'created_at', 'due_date'], true)) {
             $query->orderBy($sortBy, $sortDir);
+            if ($sortBy === 'due_date') {
+                $query->orderByPriority('asc');
+            }
         } else {
-            $query->orderBy('due_date', 'asc');
+            $query->orderBy('due_date', 'asc')->orderByPriority('asc');
         }
 
+        $viewMode = $request->input('view') === 'kanban' ? 'kanban' : 'list';
+        $kanbanTasks = (clone $query)->limit(250)->get();
         $tasks = $query->paginate(25)->withQueryString();
 
         $projects = Project::where('user_id', $user->id)
@@ -96,7 +105,19 @@ class TaskController extends Controller
 
         return Inertia::render('Tasks/Index', [
             'tasks' => $tasks,
-            'filters' => $request->only(['search', 'status', 'category_id', 'project_id', 'priority', 'date_filter', 'sort_by', 'sort_dir']),
+            'kanbanTasks' => $kanbanTasks,
+            'filters' => $request->only([
+                'search',
+                'status',
+                'category_id',
+                'project_id',
+                'priority',
+                'date_filter',
+                'sort_by',
+                'sort_dir',
+                'view',
+            ]),
+            'viewMode' => $viewMode,
             'projects' => $projects,
             'tags' => $tags,
         ]);
@@ -105,38 +126,21 @@ class TaskController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $user = $request->user();
+        $validated = $this->validateTaskPayload($request, isUpdate: false);
 
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'category_id' => [
-                'nullable',
-                Rule::exists('categories', 'id')->where('user_id', $user->id),
-            ],
-            'project_id' => [
-                'nullable',
-                Rule::exists('projects', 'id')->where('user_id', $user->id),
-            ],
-            'priority' => 'required|in:high,medium,low',
-            'status' => 'required|in:not_started,in_progress,waiting,completed,deferred',
-            'due_date' => 'nullable|date',
-            'start_date' => 'nullable|date',
-            'estimated_duration' => 'nullable|integer|min:1',
-            'actual_duration' => 'nullable|integer|min:0',
-            'notes' => 'nullable|string',
-            'next_action' => 'nullable|string|max:255',
-            'is_recurring' => 'nullable|boolean',
-            'recurrence_rule' => 'nullable|string|max:100',
-            'tag_ids' => 'nullable|array',
-            'tag_ids.*' => [
-                'integer',
-                Rule::exists('tags', 'id')->where('user_id', $user->id),
-            ],
-            'checklists' => 'nullable|array',
-            'checklists.*.title' => 'required|string|max:255',
-        ]);
+        $remindAtUtc = null;
+        if (! empty($validated['remind_at'])) {
+            $tz = UserDateTime::resolveTimezone($user);
+            $remindAtUtc = Carbon::parse($validated['remind_at'], $tz)->utc();
+        }
 
-        DB::transaction(function () use ($validated, $user) {
+        $defaultPreset = $user->setting?->default_task_reminder_preset ?: 'none';
+        $preset = $validated['reminder_preset']
+            ?? ((! empty($validated['due_date']) && $defaultPreset !== 'none') ? $defaultPreset : 'none');
+
+        $isRecurring = (bool) ($validated['is_recurring'] ?? false);
+
+        DB::transaction(function () use ($validated, $user, $remindAtUtc, $preset, $isRecurring): void {
             $task = Task::create([
                 'user_id' => $user->id,
                 'category_id' => $validated['category_id'] ?? null,
@@ -146,21 +150,29 @@ class TaskController extends Controller
                 'priority' => $validated['priority'],
                 'status' => $validated['status'],
                 'due_date' => $validated['due_date'] ?? null,
+                'due_time' => $validated['due_time'] ?? null,
+                'reminder_preset' => $preset,
+                'remind_at' => $remindAtUtc,
+                'custom_reminder_times' => $validated['custom_reminder_times'] ?? null,
                 'start_date' => $validated['start_date'] ?? null,
                 'estimated_duration' => $validated['estimated_duration'] ?? null,
                 'actual_duration' => $validated['actual_duration'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'next_action' => $validated['next_action'] ?? null,
-                'is_recurring' => $validated['is_recurring'] ?? false,
-                'recurrence_rule' => $validated['recurrence_rule'] ?? null,
+                'is_recurring' => $isRecurring,
+                'recurrence_rule' => $isRecurring ? ($validated['recurrence_rule'] ?? 'daily') : null,
+                'recurrence_interval' => $isRecurring ? max(1, (int) ($validated['recurrence_interval'] ?? 1)) : 1,
+                'recurrence_end_type' => $isRecurring ? ($validated['recurrence_end_type'] ?? 'never') : 'never',
+                'recurrence_end_date' => $isRecurring ? ($validated['recurrence_end_date'] ?? null) : null,
+                'recurrence_max_occurrences' => $isRecurring ? ($validated['recurrence_max_occurrences'] ?? null) : null,
                 'completed_at' => ($validated['status'] === 'completed') ? now() : null,
             ]);
 
-            if (!empty($validated['tag_ids'])) {
+            if (! empty($validated['tag_ids'])) {
                 $task->tags()->sync($validated['tag_ids']);
             }
 
-            if (!empty($validated['checklists'])) {
+            if (! empty($validated['checklists'])) {
                 foreach ($validated['checklists'] as $idx => $cl) {
                     TaskChecklist::create([
                         'task_id' => $task->id,
@@ -179,40 +191,19 @@ class TaskController extends Controller
     {
         $this->authorize('update', $task);
         $user = $request->user();
+        $validated = $this->validateTaskPayload($request, isUpdate: true);
 
-        $validated = $request->validate([
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'category_id' => [
-                'nullable',
-                Rule::exists('categories', 'id')->where('user_id', $user->id),
-            ],
-            'project_id' => [
-                'nullable',
-                Rule::exists('projects', 'id')->where('user_id', $user->id),
-            ],
-            'priority' => 'required|in:high,medium,low',
-            'status' => 'required|in:not_started,in_progress,waiting,completed,deferred',
-            'due_date' => 'nullable|date',
-            'start_date' => 'nullable|date',
-            'estimated_duration' => 'nullable|integer|min:1',
-            'actual_duration' => 'nullable|integer|min:0',
-            'notes' => 'nullable|string',
-            'next_action' => 'nullable|string|max:255',
-            'is_recurring' => 'nullable|boolean',
-            'recurrence_rule' => 'nullable|string|max:100',
-            'tag_ids' => 'nullable|array',
-            'tag_ids.*' => [
-                'integer',
-                Rule::exists('tags', 'id')->where('user_id', $user->id),
-            ],
-            'checklists' => 'nullable|array',
-            'checklists.*.id' => 'nullable|integer',
-            'checklists.*.title' => 'required|string|max:255',
-            'checklists.*.is_completed' => 'nullable|boolean',
-        ]);
+        $remindAtUtc = $task->remind_at;
+        if (array_key_exists('remind_at', $validated)) {
+            $tz = UserDateTime::resolveTimezone($user);
+            $remindAtUtc = ! empty($validated['remind_at'])
+                ? Carbon::parse($validated['remind_at'], $tz)->utc()
+                : null;
+        }
 
-        DB::transaction(function () use ($task, $validated) {
+        $isRecurring = (bool) ($validated['is_recurring'] ?? false);
+
+        DB::transaction(function () use ($task, $validated, $remindAtUtc, $isRecurring): void {
             $statusChangedToCompleted = $validated['status'] === 'completed' && $task->status !== 'completed';
             $statusReopened = $validated['status'] !== 'completed' && $task->status === 'completed';
 
@@ -224,13 +215,23 @@ class TaskController extends Controller
                 'priority' => $validated['priority'],
                 'status' => $validated['status'],
                 'due_date' => $validated['due_date'] ?? null,
+                'due_time' => array_key_exists('due_time', $validated) ? ($validated['due_time'] ?? null) : $task->due_time,
+                'reminder_preset' => $validated['reminder_preset'] ?? ($task->reminder_preset ?: 'none'),
+                'remind_at' => $remindAtUtc,
+                'custom_reminder_times' => array_key_exists('custom_reminder_times', $validated)
+                    ? ($validated['custom_reminder_times'] ?? null)
+                    : $task->custom_reminder_times,
                 'start_date' => $validated['start_date'] ?? null,
                 'estimated_duration' => $validated['estimated_duration'] ?? null,
                 'actual_duration' => $validated['actual_duration'] ?? null,
                 'notes' => $validated['notes'] ?? null,
                 'next_action' => $validated['next_action'] ?? null,
-                'is_recurring' => $validated['is_recurring'] ?? false,
-                'recurrence_rule' => $validated['recurrence_rule'] ?? null,
+                'is_recurring' => $isRecurring,
+                'recurrence_rule' => $isRecurring ? ($validated['recurrence_rule'] ?? $task->recurrence_rule ?? 'daily') : null,
+                'recurrence_interval' => $isRecurring ? max(1, (int) ($validated['recurrence_interval'] ?? $task->recurrence_interval ?? 1)) : 1,
+                'recurrence_end_type' => $isRecurring ? ($validated['recurrence_end_type'] ?? $task->recurrence_end_type ?? 'never') : 'never',
+                'recurrence_end_date' => $isRecurring ? ($validated['recurrence_end_date'] ?? null) : null,
+                'recurrence_max_occurrences' => $isRecurring ? ($validated['recurrence_max_occurrences'] ?? null) : null,
                 'completed_at' => $statusChangedToCompleted ? now() : ($statusReopened ? null : $task->completed_at),
             ]);
 
@@ -241,7 +242,7 @@ class TaskController extends Controller
             if (isset($validated['checklists'])) {
                 $existingIds = [];
                 foreach ($validated['checklists'] as $idx => $item) {
-                    if (!empty($item['id'])) {
+                    if (! empty($item['id'])) {
                         $cl = TaskChecklist::where('id', $item['id'])->where('task_id', $task->id)->first();
                         if ($cl) {
                             $cl->update([
@@ -263,9 +264,47 @@ class TaskController extends Controller
                 }
                 TaskChecklist::where('task_id', $task->id)->whereNotIn('id', $existingIds)->delete();
             }
+
+            if ($statusChangedToCompleted && $task->is_recurring) {
+                app(RecurringTaskService::class)->generateNextOccurrence($task);
+            }
         });
 
         return back()->with('success', 'Task updated successfully.');
+    }
+
+    public function updateStatus(Request $request, Task $task): JsonResponse|RedirectResponse
+    {
+        $this->authorize('update', $task);
+
+        $validated = $request->validate([
+            'status' => 'required|in:not_started,in_progress,waiting,completed,deferred',
+            'sort_order' => 'nullable|integer|min:0',
+        ]);
+
+        $newStatus = $validated['status'];
+
+        if ($newStatus === 'completed' && $task->status !== 'completed') {
+            $task->markAsCompleted();
+        } elseif ($newStatus !== 'completed') {
+            $updates = [
+                'status' => $newStatus,
+                'completed_at' => null,
+            ];
+            if (isset($validated['sort_order'])) {
+                $updates['sort_order'] = $validated['sort_order'];
+            }
+            $task->update($updates);
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'ok' => true,
+                'task' => $task->fresh(['category', 'project', 'tags', 'checklists']),
+            ]);
+        }
+
+        return back()->with('success', 'Task status updated.');
     }
 
     public function toggleStatus(Task $task): RedirectResponse
@@ -287,12 +326,18 @@ class TaskController extends Controller
     {
         $this->authorize('view', $task);
 
-        DB::transaction(function () use ($task) {
+        DB::transaction(function () use ($task): void {
             $clone = $task->replicate([
                 'completed_at',
+                'recurrence_parent_id',
+                'recurrence_generated',
+                'recurrence_occurrences_count',
+                'actual_duration',
             ]);
             $clone->title = "{$task->title} (Copy)";
             $clone->status = 'not_started';
+            $clone->recurrence_generated = false;
+            $clone->recurrence_occurrences_count = 1;
             $clone->save();
 
             $clone->tags()->sync($task->tags->pluck('id'));
@@ -327,18 +372,29 @@ class TaskController extends Controller
                 Rule::exists('categories', 'id')->where('user_id', $user->id),
             ],
         ]);
-        $tasks = Task::where('user_id', $user->id)->whereIn('id', $validated['task_ids']);
+
+        $tasksQuery = Task::where('user_id', $user->id)->whereIn('id', $validated['task_ids']);
 
         if ($validated['action'] === 'complete') {
-            $tasks->update(['status' => 'completed', 'completed_at' => now()]);
+            foreach ($tasksQuery->get() as $item) {
+                if ($item->status !== 'completed') {
+                    $item->markAsCompleted();
+                }
+            }
         } elseif ($validated['action'] === 'reopen') {
-            $tasks->update(['status' => 'in_progress', 'completed_at' => null]);
+            foreach ($tasksQuery->get() as $item) {
+                $item->reopen();
+            }
         } elseif ($validated['action'] === 'delete') {
-            $tasks->delete();
-        } elseif ($validated['action'] === 'set_priority' && !empty($validated['priority'])) {
-            $tasks->update(['priority' => $validated['priority']]);
+            foreach ($tasksQuery->get() as $item) {
+                $item->delete();
+            }
+        } elseif ($validated['action'] === 'set_priority' && ! empty($validated['priority'])) {
+            foreach ($tasksQuery->get() as $item) {
+                $item->update(['priority' => $validated['priority']]);
+            }
         } elseif ($validated['action'] === 'set_category') {
-            $tasks->update(['category_id' => $validated['category_id'] ?? null]);
+            $tasksQuery->update(['category_id' => $validated['category_id'] ?? null]);
         }
 
         return back()->with('success', 'Tasks updated in bulk.');
@@ -352,5 +408,64 @@ class TaskController extends Controller
 
         return back()->with('success', 'Task deleted.');
     }
-}
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function validateTaskPayload(Request $request, bool $isUpdate): array
+    {
+        $user = $request->user();
+
+        $rules = [
+            'title' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'category_id' => [
+                'nullable',
+                Rule::exists('categories', 'id')->where('user_id', $user->id),
+            ],
+            'project_id' => [
+                'nullable',
+                Rule::exists('projects', 'id')->where('user_id', $user->id),
+            ],
+            'priority' => 'required|in:high,medium,low',
+            'status' => 'required|in:not_started,in_progress,waiting,completed,deferred',
+            'due_date' => 'nullable|date',
+            'due_time' => ['nullable', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
+            'reminder_preset' => 'nullable|in:none,at_due,15m,30m,1h,1d,custom',
+            'remind_at' => 'nullable|date',
+            'custom_reminder_times' => 'nullable|array',
+            'custom_reminder_times.*' => 'nullable|string|max:64',
+            'start_date' => 'nullable|date',
+            'estimated_duration' => 'nullable|integer|min:1',
+            'actual_duration' => 'nullable|integer|min:0',
+            'notes' => 'nullable|string',
+            'next_action' => 'nullable|string|max:255',
+            'is_recurring' => 'nullable|boolean',
+            'recurrence_rule' => 'nullable|string|max:100',
+            'recurrence_interval' => 'nullable|integer|min:1|max:365',
+            'recurrence_end_type' => 'nullable|in:never,on_date,after_occurrences',
+            'recurrence_end_date' => 'nullable|date',
+            'recurrence_max_occurrences' => 'nullable|integer|min:1|max:999',
+            'tag_ids' => 'nullable|array',
+            'tag_ids.*' => [
+                'integer',
+                Rule::exists('tags', 'id')->where('user_id', $user->id),
+            ],
+            'checklists' => 'nullable|array',
+            'checklists.*.title' => 'required|string|max:255',
+        ];
+
+        if ($isUpdate) {
+            $rules['checklists.*.id'] = 'nullable|integer';
+            $rules['checklists.*.is_completed'] = 'nullable|boolean';
+        }
+
+        $validated = $request->validate($rules);
+
+        if (! empty($validated['due_time'])) {
+            $validated['due_time'] = substr((string) $validated['due_time'], 0, 5);
+        }
+
+        return $validated;
+    }
+}

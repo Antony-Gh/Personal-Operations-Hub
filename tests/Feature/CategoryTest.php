@@ -73,4 +73,3 @@ it('prevents user from modifying another users category', function () {
     $response->assertStatus(403);
     expect($cat->fresh()->name)->toBe('Secret Category');
 });
-

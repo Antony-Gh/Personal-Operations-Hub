@@ -47,4 +47,3 @@ class Habit extends Model
         return $query->where('is_archived', false);
     }
 }
-

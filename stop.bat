@@ -13,17 +13,16 @@ if %ERRORLEVEL% equ 0 (
     powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop.ps1"
 ) else (
     set RUN_DIR=%~dp0.run
-    if exist "%RUN_DIR%\laravel.pid" (
-        set /p LARAVEL_PID=<"%RUN_DIR%\laravel.pid"
-        if defined LARAVEL_PID taskkill /F /T /PID !LARAVEL_PID! >nul 2>&1
-        del "%RUN_DIR%\laravel.pid" >nul 2>&1
+    for %%F in (laravel.pid scheduler.pid queue.pid vite.pid) do (
+        if exist "!RUN_DIR!\%%F" (
+            set /p PROC_PID=<"!RUN_DIR!\%%F"
+            if defined PROC_PID taskkill /F /T /PID !PROC_PID! >nul 2>&1
+            del "!RUN_DIR!\%%F" >nul 2>&1
+            set PROC_PID=
+        )
     )
-    if exist "%RUN_DIR%\vite.pid" (
-        set /p VITE_PID=<"%RUN_DIR%\vite.pid"
-        if defined VITE_PID taskkill /F /T /PID !VITE_PID! >nul 2>&1
-        del "%RUN_DIR%\vite.pid" >nul 2>&1
-    )
-    if exist "%RUN_DIR%" rmdir "%RUN_DIR%" >nul 2>&1
+    if exist "!RUN_DIR!\background-pids.json" del "!RUN_DIR!\background-pids.json" >nul 2>&1
+    if exist "!RUN_DIR%" rmdir "!RUN_DIR%" >nul 2>&1
     echo Services terminated.
 )
 

@@ -22,4 +22,3 @@ class HabitPolicy
         return $habit->user_id === $user->id;
     }
 }
-

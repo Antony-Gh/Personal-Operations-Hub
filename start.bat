@@ -53,7 +53,7 @@ echo [2/6] Verifying project environment and dependencies...
 if not exist ".env" (
     echo       .env file not found. Creating from .env.example...
     copy .env.example .env >nul
-    call php artisan key:generate
+    call php artisan key:generate --no-interaction
 )
 
 if not exist "database" mkdir database
@@ -80,18 +80,19 @@ if not exist "node_modules" (
 
 :: 4. Run safe, non-destructive migrations
 echo [3/6] Running safe database migrations...
-call php artisan migrate --force
+call php artisan migrate --force --no-interaction
 
-:: 5. Create .run folder and spawn services with PID tracking
-echo [4/6] Spawning background services with PID tracking...
+:: 5. Create .run and background log folders and spawn services with PID tracking
+echo [4/6] Spawning services (HTTP, Vite, Scheduler, Queue) with PID tracking...
 if not exist ".run" mkdir ".run"
+if not exist "storage\logs\background" mkdir "storage\logs\background"
 
 set APP_URL=http://127.0.0.1:8000
 set VITE_URL=http://127.0.0.1:5173
 
 :: Clean up stale PID files if processes are no longer running
 powershell -NoProfile -Command ^
-    "foreach ($f in @('.run\laravel.pid', '.run\vite.pid')) { " ^
+    "foreach ($f in @('.run\laravel.pid', '.run\vite.pid', '.run\scheduler.pid', '.run\queue.pid')) { " ^
     "  if (Test-Path $f) { " ^
     "    $raw = (Get-Content $f -ErrorAction SilentlyContinue | Out-String).Trim(); " ^
     "    if ($raw -match '^\d+$') { " ^
@@ -104,7 +105,7 @@ powershell -NoProfile -Command ^
 powershell -NoProfile -Command ^
     "$p8000 = Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue; " ^
     "if (-not $p8000) { " ^
-    "  $lp = Start-Process -FilePath 'php' -ArgumentList 'artisan serve --host=127.0.0.1 --port=8000' -WorkingDirectory '%~dp0' -PassThru; " ^
+    "  $lp = Start-Process -FilePath 'php' -ArgumentList 'artisan serve --host=127.0.0.1 --port=8000 --no-interaction' -WorkingDirectory '%~dp0' -PassThru; " ^
     "  $lp.Id | Out-File -FilePath '.run\laravel.pid' -Encoding ascii; " ^
     "  Write-Host '      Laravel backend started (PID: ' $lp.Id ')' " ^
     "} else { Write-Host '      Port 8000 already bound.' }"
@@ -119,6 +120,20 @@ powershell -NoProfile -Command ^
     "  $vp.Id | Out-File -FilePath '.run\vite.pid' -Encoding ascii; " ^
     "  Write-Host '      Vite frontend started (PID: ' $vp.Id ')' " ^
     "} else { Write-Host '      Port 5173 already bound.' }"
+
+powershell -NoProfile -Command ^
+    "if (-not (Test-Path '.run\scheduler.pid')) { " ^
+    "  $sp = Start-Process -FilePath 'php' -ArgumentList 'artisan schedule:work --no-interaction' -WorkingDirectory '%~dp0' -WindowStyle Hidden -RedirectStandardOutput 'storage\logs\background\scheduler.out.log' -RedirectStandardError 'storage\logs\background\scheduler.err.log' -PassThru; " ^
+    "  $sp.Id | Out-File -FilePath '.run\scheduler.pid' -Encoding ascii; " ^
+    "  Write-Host '      Laravel Scheduler started (PID: ' $sp.Id ')' " ^
+    "} else { Write-Host '      Laravel Scheduler already active.' }"
+
+powershell -NoProfile -Command ^
+    "if (-not (Test-Path '.run\queue.pid')) { " ^
+    "  $qp = Start-Process -FilePath 'php' -ArgumentList 'artisan queue:work --sleep=3 --tries=3 --timeout=60 --no-interaction' -WorkingDirectory '%~dp0' -WindowStyle Hidden -RedirectStandardOutput 'storage\logs\background\queue.out.log' -RedirectStandardError 'storage\logs\background\queue.err.log' -PassThru; " ^
+    "  $qp.Id | Out-File -FilePath '.run\queue.pid' -Encoding ascii; " ^
+    "  Write-Host '      Database Queue Worker started (PID: ' $qp.Id ')' " ^
+    "} else { Write-Host '      Database Queue Worker already active.' }"
 
 :: 6. Wait for application AND Vite readiness
 echo [5/6] Waiting for application and Vite frontend to be fully ready...
@@ -155,7 +170,7 @@ echo Opening default web browser...
 start "" "%APP_URL%"
 
 echo.
-echo Services are running with tracked PIDs in .run\
+echo Services (HTTP, Vite, Scheduler, Queue) are running with tracked PIDs in .run\
 echo To stop services cleanly, run stop.bat or powershell -File .\stop.ps1
 echo.
 pause

@@ -1,7 +1,6 @@
 <?php
 
 use App\Models\Category;
-use App\Models\Project;
 use App\Models\Task;
 use App\Models\User;
 use Carbon\Carbon;
@@ -115,4 +114,3 @@ it('rejects assigning another users category or project to a task', function () 
 
     $response->assertSessionHasErrors(['category_id']);
 });
-

@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { CalendarEvent, Project } from '@/types';
+import { CalendarEvent, PageProps, Project } from '@/types';
+import { getLocalDateString } from '@/utils/date';
 import {
     Calendar as CalendarIcon,
     ChevronLeft,
@@ -16,12 +17,20 @@ import {
     Filter,
     LayoutGrid,
     CalendarDays,
+    Download,
+    Link2,
+    Copy,
+    Check,
+    RefreshCw,
+    Trash2,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
     currentMonth: string; // 'YYYY-MM'
+    todayDate?: string;
     items: CalendarEvent[];
     projects: Project[];
+    calendarFeedUrl?: string | null;
     filters: {
         category_id?: string;
         project_id?: string;
@@ -29,11 +38,43 @@ const props = defineProps<{
     };
 }>();
 
-const viewMode = ref<'month' | 'week'>('month');
+const page = usePage<PageProps>();
+
+const resolveTodayDate = () => {
+    return props.todayDate || getLocalDateString(page.props.auth.user?.setting?.timezone);
+};
+
 const viewType = ref<'grid' | 'agenda'>('grid');
-const selectedDate = ref<string>(new Date().toISOString().split('T')[0]);
+const selectedDate = ref<string>(resolveTodayDate());
 const selectedCategoryId = ref(props.filters.category_id || '');
 const selectedProjectId = ref(props.filters.project_id || '');
+
+// Calendar Feed Modal
+const isFeedModalOpen = ref(false);
+const copiedFeed = ref(false);
+
+const generateFeedToken = () => {
+    router.post(route('calendar.feed.generate'), {}, { preserveScroll: true });
+};
+
+const revokeFeedToken = () => {
+    if (confirm('Revoke current private calendar subscription link? Existing subscribed clients will stop syncing until updated.')) {
+        router.delete(route('calendar.feed.revoke'), { preserveScroll: true });
+    }
+};
+
+const copyFeedUrl = async () => {
+    if (!props.calendarFeedUrl) return;
+    try {
+        await navigator.clipboard.writeText(props.calendarFeedUrl);
+        copiedFeed.value = true;
+        setTimeout(() => {
+            copiedFeed.value = false;
+        }, 2000);
+    } catch {
+        // Fallback ignored
+    }
+};
 
 const applyFilters = () => {
     router.get(
@@ -127,7 +168,7 @@ const agendaGroups = computed(() => {
 });
 
 const isToday = (dateStr: string) => {
-    return dateStr === new Date().toISOString().split('T')[0];
+    return dateStr === resolveTodayDate();
 };
 
 // Event Creation Modal
@@ -138,15 +179,17 @@ const eventForm = useForm({
     start_time: '',
     end_time: '',
     all_day: false,
+    reminder_minutes: 15 as number | null,
     location: '',
     description: '',
     color: '#6366f1',
 });
 
 const openCreateEvent = (dateStr?: string) => {
-    const defaultDate = dateStr || new Date().toISOString().split('T')[0];
+    const defaultDate = dateStr || resolveTodayDate();
     eventForm.start_time = `${defaultDate}T10:00`;
     eventForm.end_time = `${defaultDate}T11:00`;
+    eventForm.reminder_minutes = 15;
     isCreateEventOpen.value = true;
 };
 
@@ -162,41 +205,63 @@ const submitEvent = () => {
 </script>
 
 <template>
-    <Head title="Calendar" />
-
     <AuthenticatedLayout title="Calendar">
+        <Head title="Calendar" />
+
         <div class="max-w-7xl mx-auto space-y-6">
-            <!-- Header with Month Switcher -->
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+            <!-- Header with Month Switcher & .ics Actions -->
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
                 <div class="flex items-center gap-3">
                     <span class="p-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
                         <CalendarIcon class="w-6 h-6" />
                     </span>
                     <div>
                         <h2 class="text-lg font-bold text-neutral-900 dark:text-white">
-                            {{ new Date(props.currentMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }}
+                            {{ new Date(props.currentMonth + '-01T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }}
                         </h2>
-                        <p class="text-xs text-neutral-400">Tasks, milestones, and fixed commitments</p>
+                        <p class="text-xs text-neutral-400">Tasks, project deadlines, milestones, and fixed commitments</p>
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
                     <div class="flex items-center gap-1">
                         <button
+                            type="button"
                             @click="changeMonth(-1)"
                             class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
+                            title="Previous month"
                         >
                             <ChevronLeft class="w-4 h-4" />
                         </button>
                         <button
+                            type="button"
                             @click="changeMonth(1)"
                             class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
+                            title="Next month"
                         >
                             <ChevronRight class="w-4 h-4" />
                         </button>
                     </div>
 
+                    <a
+                        :href="route('calendar.export-ics')"
+                        class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-medium transition"
+                    >
+                        <Download class="w-3.5 h-3.5" />
+                        <span>Export .ics</span>
+                    </a>
+
                     <button
+                        type="button"
+                        @click="isFeedModalOpen = true"
+                        class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-800 text-neutral-700 dark:text-neutral-200 text-xs font-medium transition"
+                    >
+                        <Link2 class="w-3.5 h-3.5 text-indigo-500" />
+                        <span>Subscribe (.ics)</span>
+                    </button>
+
+                    <button
+                        type="button"
                         @click="openCreateEvent()"
                         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
                     >
@@ -285,6 +350,7 @@ const submitEvent = () => {
                                     {{ day.dayNumber }}
                                 </span>
                                 <button
+                                    type="button"
                                     @click="openCreateEvent(day.dateStr)"
                                     class="opacity-0 group-hover:opacity-100 p-0.5 text-neutral-400 hover:text-indigo-600"
                                     title="Add Event"
@@ -304,7 +370,7 @@ const submitEvent = () => {
                                     }"
                                 >
                                     <CheckSquare v-if="item.type === 'task'" class="w-2.5 h-2.5 shrink-0" />
-                                    <Flag v-else-if="item.type === 'milestone'" class="w-2.5 h-2.5 shrink-0" />
+                                    <Flag v-else-if="item.type === 'milestone' || item.type === 'project'" class="w-2.5 h-2.5 shrink-0" />
                                     <Clock v-else class="w-2.5 h-2.5 shrink-0" />
                                     <span class="truncate" :class="{ 'line-through opacity-60': item.is_completed }">
                                         {{ item.title }}
@@ -318,7 +384,6 @@ const submitEvent = () => {
                 <!-- Mobile Compact Grid (Visible on screens < md) -->
                 <div class="block md:hidden space-y-4">
                     <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-3 shadow-xs">
-                        <!-- Compact Weekday Headers -->
                         <div class="grid grid-cols-7 text-center text-[10px] font-bold text-neutral-400 mb-2 uppercase">
                             <div>M</div>
                             <div>T</div>
@@ -329,7 +394,6 @@ const submitEvent = () => {
                             <div>S</div>
                         </div>
 
-                        <!-- Compact Day Tiles -->
                         <div class="grid grid-cols-7 gap-1">
                             <button
                                 v-for="day in monthDays"
@@ -341,9 +405,9 @@ const submitEvent = () => {
                                     selectedDate === day.dateStr
                                         ? 'border-indigo-600 bg-indigo-50 dark:bg-indigo-950/60 shadow-xs'
                                         : isToday(day.dateStr)
-                                        ? 'border-indigo-300 dark:border-indigo-800 bg-white dark:bg-neutral-900'
-                                        : 'border-transparent hover:bg-neutral-100/60 dark:hover:bg-neutral-800/60',
-                                    !day.isCurrentMonth ? 'opacity-30' : ''
+                                          ? 'border-indigo-300 dark:border-indigo-800 bg-white dark:bg-neutral-900'
+                                          : 'border-transparent hover:bg-neutral-100/60 dark:hover:bg-neutral-800/60',
+                                    !day.isCurrentMonth ? 'opacity-30' : '',
                                 ]"
                             >
                                 <span
@@ -353,7 +417,6 @@ const submitEvent = () => {
                                     {{ day.dayNumber }}
                                 </span>
 
-                                <!-- Event indicator dots -->
                                 <div class="flex items-center gap-0.5 h-1.5">
                                     <span
                                         v-for="(it, dotIdx) in getItemsForDate(day.dateStr).slice(0, 3)"
@@ -378,6 +441,7 @@ const submitEvent = () => {
                                 </p>
                             </div>
                             <button
+                                type="button"
                                 @click="openCreateEvent(selectedDate)"
                                 class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-medium hover:bg-indigo-700 transition"
                             >
@@ -416,6 +480,9 @@ const submitEvent = () => {
                                         {{ new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                                         <span v-if="item.end_time"> - {{ new Date(item.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                                     </p>
+                                    <p v-else-if="item.due_time" class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-mono">
+                                        {{ item.due_time }}
+                                    </p>
                                     <p v-if="item.location" class="text-[10px] text-neutral-400 flex items-center gap-1 mt-0.5">
                                         <MapPin class="w-3 h-3" /> {{ item.location }}
                                     </p>
@@ -430,7 +497,7 @@ const submitEvent = () => {
             <div v-else-if="viewType === 'agenda'" class="space-y-4">
                 <div v-if="agendaGroups.length === 0" class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-8 text-center text-xs text-neutral-400">
                     <CalendarDays class="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-700" />
-                    No scheduled events or tasks found for {{ new Date(props.currentMonth + '-01').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }}.
+                    No scheduled events or tasks found for {{ new Date(props.currentMonth + '-01T12:00:00').toLocaleDateString(undefined, { month: 'long', year: 'numeric' }) }}.
                 </div>
 
                 <div v-else class="space-y-4">
@@ -452,6 +519,7 @@ const submitEvent = () => {
                                 </span>
                             </div>
                             <button
+                                type="button"
                                 @click="openCreateEvent(group.date)"
                                 class="p-1 rounded text-neutral-400 hover:text-indigo-600"
                                 title="Add Event to this day"
@@ -486,12 +554,96 @@ const submitEvent = () => {
                                         {{ new Date(item.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}
                                         <span v-if="item.end_time"> - {{ new Date(item.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                                     </p>
+                                    <p v-else-if="item.due_time" class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-mono">
+                                        {{ item.due_time }}
+                                    </p>
                                     <p v-if="item.location" class="text-[10px] text-neutral-400 flex items-center gap-1 mt-0.5">
                                         <MapPin class="w-3 h-3" /> {{ item.location }}
                                     </p>
                                 </div>
                             </div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Calendar Subscription (.ics) Modal -->
+            <div
+                v-if="isFeedModalOpen"
+                class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+                @click.self="isFeedModalOpen = false"
+            >
+                <div class="bg-white dark:bg-neutral-900 rounded-2xl p-6 max-w-lg w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl space-y-4 text-xs">
+                    <div class="flex items-center justify-between border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                        <div class="flex items-center gap-2">
+                            <Link2 class="w-4 h-4 text-indigo-500" />
+                            <h4 class="text-sm font-bold text-neutral-900 dark:text-white">Local Calendar Subscription (.ics)</h4>
+                        </div>
+                        <button type="button" @click="isFeedModalOpen = false" class="p-1 text-neutral-400 hover:text-neutral-600">
+                            <X class="w-4 h-4" />
+                        </button>
+                    </div>
+
+                    <p class="text-neutral-600 dark:text-neutral-400 leading-relaxed">
+                        Subscribe to your tasks, project target deadlines, milestones, and scheduled events from desktop calendar apps (Outlook, Thunderbird, Windows Calendar, Apple Calendar) using a private token URL.
+                    </p>
+
+                    <div v-if="calendarFeedUrl" class="space-y-2">
+                        <label class="block font-semibold text-neutral-800 dark:text-neutral-200">Private Subscription Feed URL</label>
+                        <div class="flex gap-2">
+                            <input
+                                type="text"
+                                readonly
+                                :value="calendarFeedUrl"
+                                class="flex-1 text-xs font-mono rounded-lg border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 dark:text-white"
+                            />
+                            <button
+                                type="button"
+                                @click="copyFeedUrl"
+                                class="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium inline-flex items-center gap-1"
+                            >
+                                <Check v-if="copiedFeed" class="w-3.5 h-3.5" />
+                                <Copy v-else class="w-3.5 h-3.5" />
+                                <span>{{ copiedFeed ? 'Copied' : 'Copy' }}</span>
+                            </button>
+                        </div>
+
+                        <div class="flex items-center justify-between pt-2">
+                            <button
+                                type="button"
+                                @click="generateFeedToken"
+                                class="inline-flex items-center gap-1 text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
+                            >
+                                <RefreshCw class="w-3.5 h-3.5" />
+                                <span>Regenerate Token</span>
+                            </button>
+                            <button
+                                type="button"
+                                @click="revokeFeedToken"
+                                class="inline-flex items-center gap-1 text-rose-600 dark:text-rose-400 hover:underline font-medium"
+                            >
+                                <Trash2 class="w-3.5 h-3.5" />
+                                <span>Revoke Link</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div v-else class="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200 dark:border-neutral-800 text-center space-y-3">
+                        <p class="text-neutral-500 dark:text-neutral-400">No active private subscription link is enabled yet.</p>
+                        <button
+                            type="button"
+                            @click="generateFeedToken"
+                            class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-xs transition"
+                        >
+                            Generate Private Subscription Link
+                        </button>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-amber-50/70 dark:bg-amber-950/30 border border-amber-200/70 dark:border-amber-900/60 text-[11px] text-amber-800 dark:text-amber-300 space-y-1">
+                        <p class="font-semibold">Local Network Note:</p>
+                        <p>
+                            Desktop apps on this Windows PC can subscribe directly to <code class="font-mono">http://127.0.0.1:8000/...</code> while the local background runner is active. Cloud-polled services (like Google Calendar web) cannot reach <code class="font-mono">127.0.0.1</code>—use <strong>Export .ics</strong> to import snapshots there.
+                        </p>
                     </div>
                 </div>
             </div>
@@ -537,27 +689,44 @@ const submitEvent = () => {
                             </div>
                         </div>
 
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="block font-medium mb-1">Area / Category</label>
+                                <select
+                                    v-model="eventForm.category_id"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                >
+                                    <option value="">None</option>
+                                    <option v-for="cat in $page.props.categories" :key="cat.id" :value="cat.id">
+                                        {{ cat.name }}
+                                    </option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="block font-medium mb-1">Event Alarm</label>
+                                <select
+                                    v-model="eventForm.reminder_minutes"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                >
+                                    <option :value="null">None</option>
+                                    <option :value="0">At start time</option>
+                                    <option :value="10">10 minutes before</option>
+                                    <option :value="15">15 minutes before</option>
+                                    <option :value="30">30 minutes before</option>
+                                    <option :value="60">1 hour before</option>
+                                    <option :value="1440">1 day before</option>
+                                </select>
+                            </div>
+                        </div>
+
                         <div>
                             <label class="block font-medium mb-1">Location / Link</label>
                             <input
                                 v-model="eventForm.location"
                                 type="text"
-                                placeholder="e.g. Lab 302 or Google Meet link"
+                                placeholder="e.g. Lab 302 or Meet link"
                                 class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                             />
-                        </div>
-
-                        <div>
-                            <label class="block font-medium mb-1">Area / Category</label>
-                            <select
-                                v-model="eventForm.category_id"
-                                class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
-                            >
-                                <option value="">None</option>
-                                <option v-for="cat in $page.props.categories" :key="cat.id" :value="cat.id">
-                                    {{ cat.name }}
-                                </option>
-                            </select>
                         </div>
 
                         <div class="flex justify-end gap-2 pt-2">
@@ -581,4 +750,3 @@ const submitEvent = () => {
         </div>
     </AuthenticatedLayout>
 </template>
-

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
-import { PageProps } from '@/types';
+import { PageProps, TaskReminderPreset } from '@/types';
+import { getLocalDateString } from '@/utils/date';
 import {
     X,
     CheckSquare,
@@ -13,12 +14,32 @@ import {
 
 const props = defineProps<{
     show: boolean;
+    initialTab?: 'task' | 'project' | 'category' | 'phone';
 }>();
 
 const emit = defineEmits(['close']);
 
 const page = usePage<PageProps>();
-const activeTab = ref<'task' | 'project' | 'category' | 'phone'>('task');
+const activeTab = ref<'task' | 'project' | 'category' | 'phone'>(props.initialTab || 'task');
+
+const userTimezone = () => page.props.auth.user?.setting?.timezone;
+
+watch(
+    () => props.show,
+    (opened) => {
+        if (opened) {
+            activeTab.value = props.initialTab || 'task';
+            const localToday = getLocalDateString(userTimezone());
+            taskForm.due_date = localToday;
+            taskForm.priority = page.props.auth.user?.setting?.default_priority || 'medium';
+            taskForm.estimated_duration = page.props.auth.user?.setting?.default_task_duration || 30;
+            taskForm.reminder_preset =
+                (page.props.auth.user?.setting?.default_task_reminder_preset as TaskReminderPreset) || 'none';
+            projectForm.start_date = localToday;
+            phoneForm.date = localToday;
+        }
+    }
+);
 
 // Task Form
 const taskForm = useForm({
@@ -26,10 +47,12 @@ const taskForm = useForm({
     description: '',
     category_id: '' as string | number,
     project_id: '' as string | number,
-    priority: 'medium' as 'high' | 'medium' | 'low',
+    priority: (page.props.auth.user?.setting?.default_priority || 'medium') as 'high' | 'medium' | 'low',
     status: 'not_started' as 'not_started' | 'in_progress',
-    due_date: new Date().toISOString().split('T')[0],
-    estimated_duration: 30,
+    due_date: getLocalDateString(userTimezone()),
+    due_time: '',
+    reminder_preset: ((page.props.auth.user?.setting?.default_task_reminder_preset as TaskReminderPreset) || 'none') as TaskReminderPreset,
+    estimated_duration: page.props.auth.user?.setting?.default_task_duration || 30,
     next_action: '',
 });
 
@@ -48,8 +71,9 @@ const projectForm = useForm({
     description: '',
     category_id: '' as string | number,
     status: 'in_progress',
-    start_date: new Date().toISOString().split('T')[0],
+    start_date: getLocalDateString(userTimezone()),
     target_date: '',
+    reminders_enabled: true,
 });
 
 const submitProject = () => {
@@ -79,7 +103,7 @@ const submitCategory = () => {
 
 // Phone Usage Form
 const phoneForm = useForm({
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateString(userTimezone()),
     minutes: 30,
     notes: '',
 });
@@ -120,11 +144,11 @@ const submitPhone = () => {
             </div>
 
             <!-- Tab Switcher -->
-            <div class="flex border-b border-gray-100 dark:border-gray-700/60 px-6 gap-2 bg-gray-50/50 dark:bg-gray-900/30">
+            <div class="flex border-b border-gray-100 dark:border-gray-700/60 px-6 gap-2 bg-gray-50/50 dark:bg-gray-900/30 overflow-x-auto">
                 <button
                     type="button"
                     @click="activeTab = 'task'"
-                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition"
+                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition whitespace-nowrap"
                     :class="activeTab === 'task' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'"
                 >
                     <CheckSquare class="w-4 h-4" /> Task
@@ -132,7 +156,7 @@ const submitPhone = () => {
                 <button
                     type="button"
                     @click="activeTab = 'project'"
-                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition"
+                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition whitespace-nowrap"
                     :class="activeTab === 'project' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'"
                 >
                     <FolderKanban class="w-4 h-4" /> Project
@@ -140,7 +164,7 @@ const submitPhone = () => {
                 <button
                     type="button"
                     @click="activeTab = 'category'"
-                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition"
+                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition whitespace-nowrap"
                     :class="activeTab === 'category' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'"
                 >
                     <TagIcon class="w-4 h-4" /> Area
@@ -148,15 +172,15 @@ const submitPhone = () => {
                 <button
                     type="button"
                     @click="activeTab = 'phone'"
-                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition"
-                    :class="activeTab === 'phone' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'"
+                    class="flex items-center gap-1.5 py-3 px-3 text-xs font-medium border-b-2 transition whitespace-nowrap"
+                    :class="activeTab === 'phone' ? 'border-indigo-600 text-indigo-600 dark:text-gray-400' : 'border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400'"
                 >
                     <Smartphone class="w-4 h-4" /> Phone Usage
                 </button>
             </div>
 
             <!-- Tab Content -->
-            <div class="p-6">
+            <div class="p-6 max-h-[75vh] overflow-y-auto">
                 <!-- Task Form -->
                 <form v-if="activeTab === 'task'" @submit.prevent="submitTask" class="space-y-4">
                     <div>
@@ -204,6 +228,31 @@ const submitPhone = () => {
                                 type="date"
                                 class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
                             />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Due Time (Optional)</label>
+                            <input
+                                v-model="taskForm.due_time"
+                                type="time"
+                                class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                            />
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Alarm / Reminder</label>
+                            <select
+                                v-model="taskForm.reminder_preset"
+                                class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                            >
+                                <option value="none">No Reminder</option>
+                                <option value="at_due">At Due Time</option>
+                                <option value="15m">15 min before</option>
+                                <option value="30m">30 min before</option>
+                                <option value="1h">1 hour before</option>
+                                <option value="1d">1 day before</option>
+                            </select>
                         </div>
                         <div>
                             <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Est. Duration (min)</label>
@@ -272,15 +321,12 @@ const submitPhone = () => {
                             </select>
                         </div>
                         <div>
-                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
-                            <select
-                                v-model="projectForm.status"
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Target Deadline</label>
+                            <input
+                                v-model="projectForm.target_date"
+                                type="date"
                                 class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
-                            >
-                                <option value="planned">Planned</option>
-                                <option value="in_progress">In Progress</option>
-                                <option value="on_hold">On Hold</option>
-                            </select>
+                            />
                         </div>
                     </div>
 
@@ -428,4 +474,3 @@ const submitPhone = () => {
         </div>
     </div>
 </template>
-

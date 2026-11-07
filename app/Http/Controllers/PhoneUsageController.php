@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Models\PhoneUsageLog;
-use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 
@@ -33,4 +32,3 @@ class PhoneUsageController extends Controller
         return back()->with('success', 'Phone usage recorded.');
     }
 }
-

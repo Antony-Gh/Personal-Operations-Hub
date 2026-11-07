@@ -1,25 +1,23 @@
 <script setup lang="ts">
 import { ref } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { CalendarEvent, DailyPlan, PhoneUsageLog, Task } from '@/types';
+import { CalendarEvent, DailyPlan, PageProps, PhoneUsageLog, Task } from '@/types';
+import { addDaysToLocalDate, getLocalDateString } from '@/utils/date';
+import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Sun,
-    Calendar as CalendarIcon,
     ChevronLeft,
     ChevronRight,
-    CheckCircle2,
     Check,
-    Plus,
     Flame,
     ShieldAlert,
-    Heart,
     Clock,
     Trash2,
     ArrowUp,
     ArrowDown,
-    CalendarClock,
     ListTodo,
+    Timer,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -33,6 +31,9 @@ const props = defineProps<{
     phoneUsage: PhoneUsageLog | null;
     targetPhoneMinutes: number;
 }>();
+
+const page = usePage<PageProps>();
+const { startFocusSession } = useFocusTimer();
 
 const planForm = useForm({
     fallback_plan: props.dailyPlan.fallback_plan || '',
@@ -51,13 +52,11 @@ const changeDate = (newDate: string) => {
 };
 
 const goToAdjacentDay = (offset: number) => {
-    const current = new Date(props.date);
-    current.setDate(current.getDate() + offset);
-    changeDate(current.toISOString().split('T')[0]);
+    changeDate(addDaysToLocalDate(props.date, offset));
 };
 
 const goToToday = () => {
-    changeDate(new Date().toISOString().split('T')[0]);
+    changeDate(getLocalDateString(page.props.auth.user?.setting?.timezone));
 };
 
 // Task Operations
@@ -88,6 +87,14 @@ const toggleTaskCompletion = (task: Task) => {
     router.post(route('tasks.toggle', task.id), {}, { preserveScroll: true });
 };
 
+const launchFocus = (task: Task) => {
+    void startFocusSession({
+        mode: 'focus',
+        planned_minutes: task.estimated_duration || page.props.auth.user?.setting?.focus_work_minutes || 25,
+        task_id: task.id,
+    });
+};
+
 // Reorder tasks
 const moveTaskOrder = (index: number, direction: 'up' | 'down') => {
     const items = [...props.plannedTasks];
@@ -112,19 +119,23 @@ const openReschedule = (task: Task) => {
 };
 
 const submitReschedule = (task: Task) => {
-    router.post(route('tasks.reschedule', task.id), { due_date: rescheduleDate.value }, {
-        preserveScroll: true,
-        onSuccess: () => {
-            reschedulingTaskId.value = null;
-        },
-    });
+    router.post(
+        route('tasks.reschedule', task.id),
+        { due_date: rescheduleDate.value },
+        {
+            preserveScroll: true,
+            onSuccess: () => {
+                reschedulingTaskId.value = null;
+            },
+        }
+    );
 };
 </script>
 
 <template>
-    <Head title="My Day - Daily Planning" />
-
     <AuthenticatedLayout title="My Day">
+        <Head title="My Day - Daily Planning" />
+
         <div class="max-w-7xl mx-auto space-y-6">
             <!-- Daily Planning Header with Navigation -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
@@ -136,6 +147,7 @@ const submitReschedule = (task: Task) => {
                         <div class="flex items-center gap-2">
                             <h2 class="text-lg font-bold text-neutral-900 dark:text-white">{{ formattedDate }}</h2>
                             <button
+                                type="button"
                                 @click="goToToday"
                                 class="px-2 py-0.5 text-[10px] font-semibold bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 rounded transition"
                             >
@@ -151,6 +163,7 @@ const submitReschedule = (task: Task) => {
                 <!-- Date Picker & Controls -->
                 <div class="flex items-center gap-2">
                     <button
+                        type="button"
                         @click="goToAdjacentDay(-1)"
                         class="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
                         title="Previous Day"
@@ -164,6 +177,7 @@ const submitReschedule = (task: Task) => {
                         class="text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white px-3 py-1.5 focus:border-indigo-500 focus:ring-indigo-500"
                     />
                     <button
+                        type="button"
                         @click="goToAdjacentDay(1)"
                         class="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
                         title="Next Day"
@@ -184,7 +198,7 @@ const submitReschedule = (task: Task) => {
                                     Planned for This Day ({{ plannedTasks.length }})
                                 </h3>
                                 <p class="text-[11px] text-neutral-400">
-                                    Reorder tasks and mark up to 3 main priorities
+                                    Reorder tasks, mark up to 3 main priorities, and start focus blocks
                                 </p>
                             </div>
                         </div>
@@ -209,6 +223,7 @@ const submitReschedule = (task: Task) => {
                             >
                                 <!-- Complete Checkbox -->
                                 <button
+                                    type="button"
                                     @click="toggleTaskCompletion(task)"
                                     class="mt-0.5 w-4 h-4 rounded border flex items-center justify-center transition shrink-0"
                                     :class="task.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600 hover:border-indigo-500'"
@@ -218,7 +233,7 @@ const submitReschedule = (task: Task) => {
 
                                 <!-- Title & details -->
                                 <div class="flex-1 min-w-0">
-                                    <div class="flex items-center gap-2">
+                                    <div class="flex items-center gap-2 flex-wrap">
                                         <span
                                             class="text-xs font-medium text-neutral-900 dark:text-white"
                                             :class="{ 'line-through text-neutral-400 dark:text-neutral-500': task.status === 'completed' }"
@@ -241,16 +256,29 @@ const submitReschedule = (task: Task) => {
                                         <span v-if="task.project" class="text-neutral-500 dark:text-neutral-400">
                                             &bull; {{ task.project.name }}
                                         </span>
-                                        <span v-if="task.estimated_duration" class="text-neutral-400">
-                                            &bull; {{ task.estimated_duration }}m est.
+                                        <span v-if="task.due_time" class="font-mono">
+                                            &bull; {{ task.due_time }}
+                                        </span>
+                                        <span v-if="task.estimated_duration || task.actual_duration" class="text-neutral-400">
+                                            &bull; <template v-if="task.actual_duration">{{ task.actual_duration }}/</template>{{ task.estimated_duration || 0 }}m
                                         </span>
                                     </div>
                                 </div>
 
-                                <!-- Action Buttons: Priority Toggle, Move Up/Down, Remove -->
+                                <!-- Action Buttons: Focus, Priority Toggle, Move Up/Down, Remove -->
                                 <div class="flex items-center gap-1 shrink-0">
-                                    <!-- Priority Star/Flame Toggle -->
                                     <button
+                                        v-if="task.status !== 'completed'"
+                                        type="button"
+                                        @click="launchFocus(task)"
+                                        class="p-1 rounded text-neutral-400 hover:text-indigo-600 transition"
+                                        title="Start Focus Timer"
+                                    >
+                                        <Timer class="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                        type="button"
                                         @click="togglePriority(task)"
                                         class="p-1 rounded text-neutral-400 hover:text-amber-500 transition"
                                         :class="{ 'text-amber-500': task.is_priority }"
@@ -259,9 +287,9 @@ const submitReschedule = (task: Task) => {
                                         <Flame class="w-4 h-4" />
                                     </button>
 
-                                    <!-- Move Up / Down -->
                                     <button
                                         v-if="idx > 0"
+                                        type="button"
                                         @click="moveTaskOrder(idx, 'up')"
                                         class="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
                                         title="Move up"
@@ -270,6 +298,7 @@ const submitReschedule = (task: Task) => {
                                     </button>
                                     <button
                                         v-if="idx < plannedTasks.length - 1"
+                                        type="button"
                                         @click="moveTaskOrder(idx, 'down')"
                                         class="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
                                         title="Move down"
@@ -277,8 +306,8 @@ const submitReschedule = (task: Task) => {
                                         <ArrowDown class="w-3.5 h-3.5" />
                                     </button>
 
-                                    <!-- Remove from Daily Plan -->
                                     <button
+                                        type="button"
                                         @click="removeTaskFromPlan(task)"
                                         class="p-1 text-neutral-400 hover:text-rose-500 transition"
                                         title="Remove from plan"
@@ -315,12 +344,14 @@ const submitReschedule = (task: Task) => {
                                 </div>
                                 <div class="flex items-center gap-1.5 shrink-0">
                                     <button
+                                        type="button"
                                         @click="addTaskToPlan(task.id, false)"
                                         class="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-700 dark:text-indigo-300 text-xs font-medium transition"
                                     >
                                         + Plan
                                     </button>
                                     <button
+                                        type="button"
                                         @click="openReschedule(task)"
                                         class="px-2 py-1 rounded bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400 text-xs transition"
                                     >
@@ -360,6 +391,7 @@ const submitReschedule = (task: Task) => {
                                     </span>
                                 </div>
                                 <button
+                                    type="button"
                                     @click="addTaskToPlan(task.id)"
                                     class="px-2.5 py-1 rounded bg-neutral-100 hover:bg-indigo-600 hover:text-white dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-medium transition text-xs shrink-0"
                                 >
@@ -395,7 +427,7 @@ const submitReschedule = (task: Task) => {
                             >
                                 <p class="font-semibold text-neutral-900 dark:text-white">{{ evt.title }}</p>
                                 <p class="text-[11px] text-neutral-500 mt-0.5">
-                                    {{ evt.start_time ? new Date(evt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }} - 
+                                    {{ evt.start_time ? new Date(evt.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }} -
                                     {{ evt.end_time ? new Date(evt.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '' }}
                                 </p>
                                 <p v-if="evt.location" class="text-[10px] text-neutral-400 mt-0.5">
@@ -418,7 +450,6 @@ const submitReschedule = (task: Task) => {
                         </div>
 
                         <form @submit.prevent="savePlanDetails" class="space-y-3">
-                            <!-- Fallback Plan -->
                             <div>
                                 <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                                     Fallback Plan (If Day Gets Overwhelmed)
@@ -431,7 +462,6 @@ const submitReschedule = (task: Task) => {
                                 ></textarea>
                             </div>
 
-                            <!-- Personal / Recovery Notes -->
                             <div>
                                 <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
                                     Personal & Recovery Time
@@ -472,13 +502,15 @@ const submitReschedule = (task: Task) => {
                     />
                     <div class="flex justify-end gap-2">
                         <button
+                            type="button"
                             @click="reschedulingTaskId = null"
                             class="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100 rounded"
                         >
                             Cancel
                         </button>
                         <button
-                            @click="submitReschedule(unplannedDueTasks.find(t => t.id === reschedulingTaskId)!)"
+                            type="button"
+                            @click="submitReschedule(unplannedDueTasks.find((t) => t.id === reschedulingTaskId)!)"
                             class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700"
                         >
                             Confirm Date

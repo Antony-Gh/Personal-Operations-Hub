@@ -21,7 +21,7 @@ class RegisteredUserController extends Controller
      */
     public function create(): Response
     {
-        if (!config('auth.allow_registration', false)) {
+        if (! config('auth.allow_registration', false)) {
             abort(403, 'Registration is currently disabled.');
         }
 
@@ -35,7 +35,7 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-        if (!config('auth.allow_registration', false)) {
+        if (! config('auth.allow_registration', false)) {
             abort(403, 'Registration is currently disabled.');
         }
 

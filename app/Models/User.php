@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Support\UserDateTime;
+use Carbon\Carbon;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -36,6 +38,34 @@ class User extends Authenticatable
     public function setting(): HasOne
     {
         return $this->hasOne(UserSetting::class);
+    }
+
+    public function ensureSetting(): UserSetting
+    {
+        return UserSetting::firstOrCreate(
+            ['user_id' => $this->id],
+            UserSetting::defaultAttributes($this->name)
+        );
+    }
+
+    public function timezone(): string
+    {
+        return UserDateTime::resolveTimezone($this);
+    }
+
+    public function localNow(): Carbon
+    {
+        return UserDateTime::nowForUser($this);
+    }
+
+    public function localToday(): Carbon
+    {
+        return UserDateTime::todayForUser($this);
+    }
+
+    public function localTodayDate(): string
+    {
+        return UserDateTime::todayDateString($this);
     }
 
     public function categories(): HasMany
@@ -81,5 +111,15 @@ class User extends Authenticatable
     public function phoneUsageLogs(): HasMany
     {
         return $this->hasMany(PhoneUsageLog::class);
+    }
+
+    public function reminders(): HasMany
+    {
+        return $this->hasMany(Reminder::class);
+    }
+
+    public function focusSessions(): HasMany
+    {
+        return $this->hasMany(FocusSession::class);
     }
 }

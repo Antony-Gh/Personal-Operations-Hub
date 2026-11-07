@@ -71,4 +71,3 @@ it('processes import and creates new records in merge mode', function () {
     expect(Category::where('user_id', $user->id)->where('name', 'Imported Unique Area')->exists())->toBeTrue();
     expect(Task::where('user_id', $user->id)->where('title', 'Imported Special Task')->exists())->toBeTrue();
 });
-

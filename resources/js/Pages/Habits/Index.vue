@@ -2,21 +2,30 @@
 import { ref } from 'vue';
 import { Head, router, useForm } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Habit } from '@/types';
+import HabitHeatmap from '@/Components/HabitHeatmap.vue';
+import { Habit, HabitHeatmap as HabitHeatmapType } from '@/types';
 import {
     Sparkles,
     Plus,
     Check,
-    Calendar,
     Archive,
-    X,
-    Heart,
     Flame,
-    BookOpen,
+    Trophy,
+    TrendingUp,
+    CalendarCheck2,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
     habits: Habit[];
+    summary?: {
+        top_current_streak: number;
+        all_time_best_streak: number;
+        average_completion_percentage: number;
+        average_weekly_consistency: number;
+        completed_today_count: number;
+        total_active_habits: number;
+    };
+    heatmap?: HabitHeatmapType;
     todayDate: string;
     pastDates: string[];
 }>();
@@ -48,17 +57,27 @@ const checkIn = (habitId: number, date: string, status: 'completed' | 'partial' 
     );
 };
 
+const cycleHistoryDay = (habitId: number, date: string, currentStatus: string) => {
+    const nextStatus: 'completed' | 'partial' | 'not_completed' =
+        currentStatus === 'completed'
+            ? 'partial'
+            : currentStatus === 'partial'
+              ? 'not_completed'
+              : 'completed';
+    checkIn(habitId, date, nextStatus);
+};
+
 const archiveHabit = (habitId: number) => {
-    if (confirm('Archive this habit? You can restore it anytime in settings.')) {
+    if (confirm('Archive this habit? You can restore it anytime.')) {
         router.delete(route('habits.destroy', habitId), { preserveScroll: true });
     }
 };
 </script>
 
 <template>
-    <Head title="Habits & Spiritual Life" />
-
     <AuthenticatedLayout title="Habits & Spiritual Life">
+        <Head title="Habits & Spiritual Life" />
+
         <div class="max-w-6xl mx-auto space-y-6">
             <!-- Header -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
@@ -76,6 +95,7 @@ const archiveHabit = (habitId: number) => {
 
                 <div class="flex items-center gap-2">
                     <button
+                        type="button"
                         @click="isCreateOpen = true"
                         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
                     >
@@ -84,6 +104,56 @@ const archiveHabit = (habitId: number) => {
                     </button>
                 </div>
             </div>
+
+            <!-- Streak & Consistency Analytics Cards -->
+            <div v-if="summary" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+                    <div class="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
+                        <span class="text-xs font-medium">Top Current Streak</span>
+                        <Flame class="w-4 h-4 text-amber-500" />
+                    </div>
+                    <div class="text-2xl font-bold text-neutral-900 dark:text-white">
+                        {{ summary.top_current_streak }} <span class="text-xs font-normal text-neutral-400">days</span>
+                    </div>
+                    <p class="text-[11px] text-neutral-400 mt-1">Active momentum</p>
+                </div>
+
+                <div class="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+                    <div class="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
+                        <span class="text-xs font-medium">All-Time Best Streak</span>
+                        <Trophy class="w-4 h-4 text-indigo-500" />
+                    </div>
+                    <div class="text-2xl font-bold text-neutral-900 dark:text-white">
+                        {{ summary.all_time_best_streak }} <span class="text-xs font-normal text-neutral-400">days</span>
+                    </div>
+                    <p class="text-[11px] text-neutral-400 mt-1">Longest sustained rhythm</p>
+                </div>
+
+                <div class="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+                    <div class="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
+                        <span class="text-xs font-medium">Weekly Consistency</span>
+                        <TrendingUp class="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <div class="text-2xl font-bold text-neutral-900 dark:text-white">
+                        {{ summary.average_weekly_consistency }}%
+                    </div>
+                    <p class="text-[11px] text-neutral-400 mt-1">Against weekly targets</p>
+                </div>
+
+                <div class="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+                    <div class="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
+                        <span class="text-xs font-medium">Checked In Today</span>
+                        <CalendarCheck2 class="w-4 h-4 text-purple-500" />
+                    </div>
+                    <div class="text-2xl font-bold text-neutral-900 dark:text-white">
+                        {{ summary.completed_today_count }}/{{ summary.total_active_habits }}
+                    </div>
+                    <p class="text-[11px] text-neutral-400 mt-1">{{ summary.average_completion_percentage }}% overall completion</p>
+                </div>
+            </div>
+
+            <!-- Monthly Consistency Heatmap -->
+            <HabitHeatmap v-if="heatmap" :heatmap="heatmap" />
 
             <!-- Habits Grid -->
             <div class="space-y-4">
@@ -94,11 +164,23 @@ const archiveHabit = (habitId: number) => {
                 >
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                         <div>
-                            <div class="flex items-center gap-2 mb-1">
+                            <div class="flex items-center gap-2 mb-1 flex-wrap">
                                 <span class="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
                                     {{ habit.category }}
                                 </span>
                                 <span class="text-xs text-neutral-400">Target: {{ habit.target_days_per_week }} days/week</span>
+                                <span
+                                    v-if="(habit.current_streak || 0) > 0"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300"
+                                >
+                                    <Flame class="w-3 h-3" /> {{ habit.current_streak }}d streak
+                                </span>
+                                <span
+                                    v-if="(habit.best_streak || 0) > 0"
+                                    class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                                >
+                                    Best: {{ habit.best_streak }}d
+                                </span>
                             </div>
                             <h3 class="text-base font-bold text-neutral-900 dark:text-white">{{ habit.name }}</h3>
                             <p v-if="habit.description" class="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
@@ -110,6 +192,7 @@ const archiveHabit = (habitId: number) => {
                         <div class="flex items-center gap-2 shrink-0">
                             <span class="text-xs font-medium text-neutral-500 mr-1">Today:</span>
                             <button
+                                type="button"
                                 @click="checkIn(habit.id, todayDate, 'completed')"
                                 class="px-3 py-1.5 rounded-xl text-xs font-medium transition flex items-center gap-1"
                                 :class="habit.today_status === 'completed' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-emerald-50 hover:text-emerald-700'"
@@ -118,6 +201,7 @@ const archiveHabit = (habitId: number) => {
                                 <span>Completed</span>
                             </button>
                             <button
+                                type="button"
                                 @click="checkIn(habit.id, todayDate, 'partial')"
                                 class="px-3 py-1.5 rounded-xl text-xs font-medium transition"
                                 :class="habit.today_status === 'partial' ? 'bg-amber-500 text-white shadow-xs' : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 hover:bg-amber-50 hover:text-amber-700'"
@@ -125,6 +209,7 @@ const archiveHabit = (habitId: number) => {
                                 Partial
                             </button>
                             <button
+                                type="button"
                                 @click="archiveHabit(habit.id)"
                                 class="p-1.5 text-neutral-400 hover:text-rose-500 rounded-lg ml-2"
                                 title="Archive habit"
@@ -134,29 +219,35 @@ const archiveHabit = (habitId: number) => {
                         </div>
                     </div>
 
-                    <!-- Past 14 Days Consistency Matrix -->
+                    <!-- Past 14 Days Consistency Matrix + Analytics Pills -->
                     <div class="pt-3 border-t border-neutral-100 dark:border-neutral-800">
-                        <div class="flex items-center justify-between text-[11px] text-neutral-400 mb-2">
-                            <span>Past 14 Days Consistency</span>
-                            <span class="font-medium text-neutral-700 dark:text-neutral-300">
-                                {{ habit.completed_in_7_days }}/7 active this week
-                            </span>
+                        <div class="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-400 mb-2">
+                            <span>Past 14 Days (click any day to toggle)</span>
+                            <div class="flex items-center gap-3 text-neutral-600 dark:text-neutral-300 font-medium">
+                                <span>{{ habit.completed_in_7_days }}/{{ habit.target_days_per_week }} this week ({{ habit.weekly_consistency ?? 0 }}%)</span>
+                                <span v-if="habit.monthly_consistency !== undefined" class="text-neutral-400">•</span>
+                                <span v-if="habit.monthly_consistency !== undefined">30d: {{ habit.monthly_consistency }}%</span>
+                                <span v-if="habit.total_completed_days !== undefined" class="text-neutral-400">•</span>
+                                <span v-if="habit.total_completed_days !== undefined">{{ habit.total_completed_days }} total days</span>
+                            </div>
                         </div>
 
                         <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
-                            <div
+                            <button
                                 v-for="item in habit.history"
                                 :key="item.date"
-                                class="flex-1 min-w-[28px] max-w-[45px] text-center"
+                                type="button"
+                                @click="cycleHistoryDay(habit.id, item.date, item.status)"
+                                class="flex-1 min-w-[28px] max-w-[45px] text-center group"
+                                :title="`${item.date}: ${item.status} (click to cycle)`"
                             >
                                 <div
-                                    class="h-8 rounded-lg flex items-center justify-center text-[10px] font-bold transition shadow-xs"
+                                    class="h-8 rounded-lg flex items-center justify-center text-[10px] font-bold transition shadow-xs group-hover:ring-2 group-hover:ring-indigo-400"
                                     :class="{
                                         'bg-emerald-500 text-white': item.status === 'completed',
                                         'bg-amber-400 text-neutral-900': item.status === 'partial',
                                         'bg-neutral-100 dark:bg-neutral-800 text-neutral-400': item.status === 'none' || item.status === 'not_completed',
                                     }"
-                                    :title="item.date + ': ' + item.status"
                                 >
                                     <Check v-if="item.status === 'completed'" class="w-3.5 h-3.5" />
                                     <span v-else-if="item.status === 'partial'">~</span>
@@ -165,7 +256,7 @@ const archiveHabit = (habitId: number) => {
                                 <span class="text-[9px] text-neutral-400 font-mono block mt-1">
                                     {{ item.date.slice(8) }}
                                 </span>
-                            </div>
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -255,4 +346,3 @@ const archiveHabit = (habitId: number) => {
         </div>
     </AuthenticatedLayout>
 </template>
-

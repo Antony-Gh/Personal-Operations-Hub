@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { PageProps } from '@/types';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
 import QuickAddModal from '@/Components/QuickAddModal.vue';
+import NotificationCenter from '@/Components/NotificationCenter.vue';
+import MiniFocusTimer from '@/Components/MiniFocusTimer.vue';
+import CommandPalette from '@/Components/CommandPalette.vue';
 import {
     LayoutDashboard,
     Sun,
@@ -13,6 +16,7 @@ import {
     HeartHandshake,
     Sparkles,
     Settings,
+    FileText,
     ChevronLeft,
     ChevronRight,
     Menu,
@@ -36,12 +40,14 @@ const isSidebarCollapsed = ref(false);
 const isMobileDrawerOpen = ref(false);
 const isUserMenuOpen = ref(false);
 const isQuickAddOpen = ref(false);
+const quickAddTab = ref<'task' | 'project' | 'category' | 'phone'>('task');
 
-const { theme, isDark, toggleTheme, initTheme } = useTheme();
+const { isDark, toggleTheme, initTheme } = useTheme();
 
 const navItems = [
     { name: 'Dashboard', route: 'dashboard', icon: LayoutDashboard },
     { name: 'My Day', route: 'my-day.index', icon: Sun },
+    { name: 'Briefings', route: 'briefings.index', icon: FileText },
     { name: 'Tasks', route: 'tasks.index', icon: CheckSquare },
     { name: 'Projects', route: 'projects.index', icon: FolderKanban },
     { name: 'Calendar', route: 'calendar.index', icon: Calendar },
@@ -63,6 +69,11 @@ onMounted(() => {
 const toggleSidebar = () => {
     isSidebarCollapsed.value = !isSidebarCollapsed.value;
     localStorage.setItem('sidebar_collapsed', String(isSidebarCollapsed.value));
+};
+
+const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') => {
+    quickAddTab.value = tab;
+    isQuickAddOpen.value = true;
 };
 </script>
 
@@ -234,11 +245,11 @@ const toggleSidebar = () => {
             <!-- Main Content Container -->
             <div class="flex-1 flex flex-col min-w-0 overflow-hidden">
                 <!-- Top Header Bar -->
-                <header class="h-16 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4 sm:px-6 z-10 shrink-0">
-                    <div class="flex items-center gap-3">
+                <header class="h-16 bg-white dark:bg-neutral-900 border-b border-neutral-200 dark:border-neutral-800 flex items-center justify-between px-4 sm:px-6 z-20 shrink-0">
+                    <div class="flex items-center gap-3 min-w-0">
                         <button
                             @click="isMobileDrawerOpen = true"
-                            class="md:hidden p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            class="md:hidden p-2 rounded-lg text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800 shrink-0"
                         >
                             <Menu class="w-5 h-5" />
                         </button>
@@ -248,15 +259,24 @@ const toggleSidebar = () => {
                     </div>
 
                     <!-- Right Controls -->
-                    <div class="flex items-center gap-2 sm:gap-3">
+                    <div class="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+                        <!-- Global Command Palette (Ctrl+K) -->
+                        <CommandPalette @open-quick-add="openQuickAdd" />
+
+                        <!-- Persistent Mini Focus Timer -->
+                        <MiniFocusTimer />
+
                         <!-- Quick Add Button -->
                         <button
-                            @click="isQuickAddOpen = true"
-                            class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
+                            @click="openQuickAdd('task')"
+                            class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition"
                         >
                             <Plus class="w-4 h-4" />
                             <span class="hidden sm:inline">Quick Add</span>
                         </button>
+
+                        <!-- Notification Bell & Drawer -->
+                        <NotificationCenter />
 
                         <!-- Theme Toggle Button -->
                         <button
@@ -280,14 +300,12 @@ const toggleSidebar = () => {
                                 </div>
                             </button>
 
-                            <!-- Dropdown Backdrop (click outside to close) -->
                             <div
                                 v-if="isUserMenuOpen"
                                 class="fixed inset-0 z-40"
                                 @click="isUserMenuOpen = false"
                             ></div>
 
-                            <!-- Dropdown Menu -->
                             <div
                                 v-if="isUserMenuOpen"
                                 class="absolute right-0 mt-2 w-48 rounded-xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200 dark:border-neutral-800 py-1 z-50 text-xs"
@@ -306,6 +324,12 @@ const toggleSidebar = () => {
                                     class="flex items-center gap-2 px-3 py-2 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
                                 >
                                     <Settings class="w-4 h-4" /> Preferences
+                                </Link>
+                                <Link
+                                    :href="route('settings.data')"
+                                    class="flex items-center gap-2 px-3 py-2 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                                >
+                                    <Layers class="w-4 h-4" /> Backups & Data
                                 </Link>
                                 <Link
                                     :href="route('profile.edit')"
@@ -335,6 +359,6 @@ const toggleSidebar = () => {
         </div>
 
         <!-- Global Quick Add Modal -->
-        <QuickAddModal :show="isQuickAddOpen" @close="isQuickAddOpen = false" />
+        <QuickAddModal :show="isQuickAddOpen" :initial-tab="quickAddTab" @close="isQuickAddOpen = false" />
     </div>
 </template>

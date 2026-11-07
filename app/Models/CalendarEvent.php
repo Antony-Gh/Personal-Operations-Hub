@@ -20,6 +20,7 @@ class CalendarEvent extends Model
         'all_day',
         'location',
         'color',
+        'reminder_minutes',
     ];
 
     protected function casts(): array
@@ -28,6 +29,7 @@ class CalendarEvent extends Model
             'start_time' => 'datetime',
             'end_time' => 'datetime',
             'all_day' => 'boolean',
+            'reminder_minutes' => 'integer',
         ];
     }
 
@@ -41,4 +43,3 @@ class CalendarEvent extends Model
         return $this->belongsTo(Category::class);
     }
 }
-

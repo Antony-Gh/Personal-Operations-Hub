@@ -2,6 +2,9 @@
 *.bak
 *.zip
 *.log
+*.sqlite-shm
+*.sqlite-wal
+/storage/app/backups
 .DS_Store
 .env
 .env.backup

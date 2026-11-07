@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { ref } from 'vue';
-import { Head, router, useForm } from '@inertiajs/vue3';
+import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { Task, WeeklyReview } from '@/types';
+import { PageProps, Task, WeeklyReview } from '@/types';
+import { addDaysToLocalDate, getLocalDateString } from '@/utils/date';
 import {
     HeartHandshake,
     Calendar,
@@ -11,8 +11,7 @@ import {
     CheckCircle2,
     AlertCircle,
     Save,
-    History,
-    Sparkles,
+    Newspaper,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -26,6 +25,8 @@ const props = defineProps<{
     upcomingTasks: Task[];
     pastReviews: WeeklyReview[];
 }>();
+
+const page = usePage<PageProps>();
 
 const initialResponses: Record<string, string> = {};
 props.prompts.forEach((p) => {
@@ -49,16 +50,18 @@ const changeWeek = (dateStr: string) => {
 };
 
 const shiftWeek = (weeks: number) => {
-    const current = new Date(props.weekStart);
-    current.setDate(current.getDate() + weeks * 7);
-    changeWeek(current.toISOString().split('T')[0]);
+    changeWeek(addDaysToLocalDate(props.weekStart, weeks * 7));
+};
+
+const goToCurrentWeek = () => {
+    changeWeek(getLocalDateString(page.props.auth.user?.setting?.timezone));
 };
 </script>
 
 <template>
-    <Head title="Weekly Review" />
-
     <AuthenticatedLayout title="Weekly Review">
+        <Head title="Weekly Review" />
+
         <div class="max-w-6xl mx-auto space-y-6">
             <!-- Header with Week Selector -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
@@ -76,8 +79,16 @@ const shiftWeek = (weeks: number) => {
                     </div>
                 </div>
 
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 flex-wrap">
+                    <Link
+                        :href="route('briefings.index', { tab: 'weekly' })"
+                        class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition"
+                    >
+                        <Newspaper class="w-3.5 h-3.5" />
+                        <span>Weekly Digest</span>
+                    </Link>
                     <button
+                        type="button"
                         @click="shiftWeek(-1)"
                         class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
                         title="Previous Week"
@@ -85,12 +96,14 @@ const shiftWeek = (weeks: number) => {
                         <ChevronLeft class="w-4 h-4" />
                     </button>
                     <button
-                        @click="changeWeek(new Date().toISOString().split('T')[0])"
+                        type="button"
+                        @click="goToCurrentWeek"
                         class="px-3 py-1.5 rounded-xl border border-neutral-200 dark:border-neutral-800 text-xs font-semibold hover:bg-neutral-100 dark:hover:bg-neutral-800"
                     >
                         Current Week
                     </button>
                     <button
+                        type="button"
                         @click="shiftWeek(1)"
                         class="p-2 rounded-xl border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 transition"
                         title="Next Week"
@@ -219,4 +232,3 @@ const shiftWeek = (weeks: number) => {
         </div>
     </AuthenticatedLayout>
 </template>
-

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Task;
 use App\Models\UserSetting;
 use App\Models\WeeklyReview;
+use App\Support\UserDateTime;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -16,10 +17,12 @@ class WeeklyReviewController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
+        $tz = UserDateTime::resolveTimezone($user);
+        $localTodayStr = $user->localTodayDate();
 
         // Target week
-        $weekDate = $request->input('date', Carbon::today()->toDateString());
-        $carbon = Carbon::parse($weekDate);
+        $weekDate = $request->input('date', $localTodayStr);
+        $carbon = Carbon::parse($weekDate, $tz);
 
         // Compute start of week based on user setting (0 = Sun, 1 = Mon)
         $weekStartDay = $user->setting?->week_start ?? 1;
@@ -48,19 +51,22 @@ class WeeklyReviewController extends Controller
         // Prompts from user settings
         $prompts = $user->setting?->weekly_review_prompts ?? UserSetting::defaultPrompts();
 
-        // Weekly Summary Metrics:
         // Tasks completed this week
         $completedTasks = Task::with('category')
             ->where('user_id', $user->id)
             ->where('status', 'completed')
-            ->whereBetween('completed_at', [$startOfWeek->startOfDay(), $endOfWeek->endOfDay()])
+            ->whereBetween('completed_at', [
+                $startOfWeek->copy()->startOfDay()->utc(),
+                $endOfWeek->copy()->endOfDay()->utc(),
+            ])
             ->get();
 
         // Tasks currently overdue
         $overdueTasks = Task::with('category')
             ->where('user_id', $user->id)
-            ->where('due_date', '<', Carbon::today()->toDateString())
+            ->where('due_date', '<', $localTodayStr)
             ->where('status', '!=', 'completed')
+            ->orderByPriority()
             ->get();
 
         // Upcoming deadlines next week
@@ -70,6 +76,7 @@ class WeeklyReviewController extends Controller
             ->whereBetween('due_date', [$endDateStr, $nextWeekEnd])
             ->where('status', '!=', 'completed')
             ->orderBy('due_date', 'asc')
+            ->orderByPriority()
             ->get();
 
         // Past reviews list
@@ -82,7 +89,7 @@ class WeeklyReviewController extends Controller
             'review' => $review,
             'weekStart' => $startDateStr,
             'weekEnd' => $endDateStr,
-            'formattedRange' => $startOfWeek->format('M d') . ' - ' . $endOfWeek->format('M d, Y'),
+            'formattedRange' => $startOfWeek->format('M d').' - '.$endOfWeek->format('M d, Y'),
             'prompts' => $prompts,
             'completedTasks' => $completedTasks,
             'overdueTasks' => $overdueTasks,
@@ -112,4 +119,3 @@ class WeeklyReviewController extends Controller
         return back()->with('success', 'Weekly review saved.');
     }
 }
-

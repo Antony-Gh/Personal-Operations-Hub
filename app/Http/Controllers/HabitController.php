@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Habit;
 use App\Models\HabitCheckIn;
+use App\Services\HabitAnalyticsService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -12,46 +13,39 @@ use Inertia\Response;
 
 class HabitController extends Controller
 {
-    public function index(Request $request): Response
+    public function index(Request $request, HabitAnalyticsService $habitAnalytics): Response
     {
         $user = $request->user();
-        $today = Carbon::today();
+        $today = $user->localToday();
 
-        // Active habits
-        $habits = Habit::where('user_id', $user->id)
+        // Active habits with all check-ins for streak accuracy
+        $habits = Habit::with('checkIns')
+            ->where('user_id', $user->id)
             ->active()
             ->orderBy('sort_order')
             ->get();
 
-        // Get past 14 days dates
+        // Past 14 days dates in user's local timezone
         $pastDates = collect();
         for ($i = 13; $i >= 0; $i--) {
             $pastDates->push($today->copy()->subDays($i)->toDateString());
         }
 
-        // Fetch check-ins for the last 14 days
-        $checkIns = HabitCheckIn::where('user_id', $user->id)
-            ->whereIn('date', $pastDates)
-            ->get()
-            ->groupBy('habit_id');
+        $habitsData = $habits->map(function (Habit $habit) use ($pastDates, $today, $habitAnalytics, $user): array {
+            $byDate = $habit->checkIns->keyBy(fn (HabitCheckIn $ci): string => Carbon::parse($ci->date)->toDateString());
 
-        $habitsData = $habits->map(function ($habit) use ($checkIns, $pastDates, $today) {
-            $habitCheckIns = $checkIns->get($habit->id, collect())->keyBy('date');
+            $history = $pastDates->map(function (string $d) use ($byDate): array {
+                $ci = $byDate->get($d);
 
-            $history = $pastDates->map(function ($d) use ($habitCheckIns) {
-                $ci = $habitCheckIns->get($d);
                 return [
                     'date' => $d,
-                    'status' => $ci ? $ci->status : 'none', // completed, partial, not_completed, none
+                    'status' => $ci ? $ci->status : 'none',
                     'notes' => $ci ? $ci->notes : null,
                 ];
             });
 
-            // Weekly completion count (last 7 days)
-            $last7Days = $history->slice(7);
-            $completedIn7Days = $last7Days->whereIn('status', ['completed', 'partial'])->count();
-
-            $todayCI = $habitCheckIns->get($today->toDateString());
+            $metrics = $habitAnalytics->calculateHabitMetrics($habit, $user, $habit->checkIns);
+            $todayCI = $byDate->get($today->toDateString());
 
             return [
                 'id' => $habit->id,
@@ -62,13 +56,36 @@ class HabitController extends Controller
                 'target_days_per_week' => $habit->target_days_per_week,
                 'today_status' => $todayCI ? $todayCI->status : 'none',
                 'today_notes' => $todayCI ? $todayCI->notes : null,
-                'completed_in_7_days' => $completedIn7Days,
+                'completed_in_7_days' => $metrics['completed_in_7_days'],
+                'current_streak' => $metrics['current_streak'],
+                'best_streak' => $metrics['best_streak'],
+                'total_completed_days' => $metrics['total_completed_days'],
+                'weekly_consistency' => $metrics['weekly_consistency'],
+                'monthly_consistency' => $metrics['monthly_consistency'],
+                'completion_percentage' => $metrics['completion_percentage'],
                 'history' => $history->values(),
             ];
         });
 
+        $heatmap = $habitAnalytics->buildMonthlyHeatmap($user, $request->input('heatmap_month'));
+
+        $summary = [
+            'top_current_streak' => (int) ($habitsData->max('current_streak') ?? 0),
+            'all_time_best_streak' => (int) ($habitsData->max('best_streak') ?? 0),
+            'average_completion_percentage' => $habitsData->isNotEmpty()
+                ? (int) round($habitsData->avg('completion_percentage'))
+                : 0,
+            'average_weekly_consistency' => $habitsData->isNotEmpty()
+                ? (int) round($habitsData->avg('weekly_consistency'))
+                : 0,
+            'completed_today_count' => $habitsData->whereIn('today_status', ['completed', 'partial'])->count(),
+            'total_active_habits' => $habitsData->count(),
+        ];
+
         return Inertia::render('Habits/Index', [
             'habits' => $habitsData,
+            'summary' => $summary,
+            'heatmap' => $heatmap,
             'todayDate' => $today->toDateString(),
             'pastDates' => $pastDates,
         ]);
@@ -152,4 +169,3 @@ class HabitController extends Controller
         return back()->with('success', 'Habit archived.');
     }
 }
-

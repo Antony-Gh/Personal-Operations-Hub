@@ -35,4 +35,3 @@ it('toggles project milestone completion', function () {
     expect($m->fresh()->is_completed)->toBeTrue();
     expect($m->fresh()->completed_at)->not->toBeNull();
 });
-

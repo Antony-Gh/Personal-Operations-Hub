@@ -1,9 +1,25 @@
+export type NotificationCategory =
+    | 'task_reminders'
+    | 'overdue_tasks'
+    | 'project_deadlines'
+    | 'milestone_deadlines'
+    | 'habit_reminders'
+    | 'focus_timer'
+    | 'daily_briefing'
+    | 'weekly_digest'
+    | 'system_notifications';
+
+export type NotificationSoundPreset = 'chime' | 'bell' | 'soft_ping' | 'digital_alarm';
+
+export type TaskReminderPreset = 'none' | 'at_due' | '15m' | '30m' | '1h' | '1d' | 'custom';
+
 export interface UserSetting {
     id: number;
     user_id: number;
     display_name: string | null;
     theme: 'light' | 'dark' | 'system';
     language: string;
+    timezone: string;
     week_start: number; // 0 = Sunday, 1 = Monday
     date_format: string;
     time_format: string;
@@ -11,6 +27,33 @@ export interface UserSetting {
     default_task_duration: number;
     phone_usage_target_minutes: number;
     weekly_review_prompts: string[];
+    quiet_hours_enabled: boolean;
+    quiet_hours_start: string;
+    quiet_hours_end: string;
+    allow_critical_in_quiet_hours: boolean;
+    notifications_enabled: boolean;
+    browser_notifications_enabled: boolean;
+    notification_sound_enabled: boolean;
+    notification_sound: NotificationSoundPreset;
+    notification_volume: number;
+    notification_preferences: Record<NotificationCategory, boolean>;
+    daily_briefing_enabled: boolean;
+    daily_briefing_time: string;
+    last_daily_briefing_at?: string | null;
+    weekly_digest_enabled: boolean;
+    weekly_digest_day: number;
+    weekly_digest_time: string;
+    last_weekly_digest_at?: string | null;
+    default_task_reminder_preset: TaskReminderPreset;
+    project_reminder_days: number[];
+    backup_enabled: boolean;
+    backup_retention_days: number;
+    focus_work_minutes: number;
+    focus_short_break_minutes: number;
+    focus_long_break_minutes: number;
+    focus_auto_start_breaks: boolean;
+    calendar_feed_enabled: boolean;
+    has_calendar_feed_token?: boolean;
 }
 
 export interface User {
@@ -64,6 +107,10 @@ export interface Task {
     priority: 'high' | 'medium' | 'low';
     status: 'not_started' | 'in_progress' | 'waiting' | 'completed' | 'deferred';
     due_date: string | null;
+    due_time?: string | null;
+    reminder_preset?: TaskReminderPreset | null;
+    remind_at?: string | null;
+    custom_reminder_times?: string[] | null;
     start_date: string | null;
     estimated_duration: number | null;
     actual_duration: number | null;
@@ -72,6 +119,12 @@ export interface Task {
     sort_order: number;
     is_recurring: boolean;
     recurrence_rule: string | null;
+    recurrence_interval?: number;
+    recurrence_end_type?: 'never' | 'on_date' | 'after_occurrences';
+    recurrence_end_date?: string | null;
+    recurrence_max_occurrences?: number | null;
+    recurrence_occurrences_count?: number;
+    recurrence_parent_id?: number | null;
     completed_at: string | null;
     category?: Category | null;
     project?: Project | null;
@@ -87,6 +140,9 @@ export interface ProjectMilestone {
     project_id: number;
     title: string;
     due_date: string | null;
+    due_time?: string | null;
+    reminders_enabled?: boolean;
+    reminder_offsets?: number[] | null;
     is_completed: boolean;
     completed_at: string | null;
     sort_order: number;
@@ -101,6 +157,9 @@ export interface Project {
     status: 'planned' | 'in_progress' | 'on_hold' | 'completed' | 'archived';
     start_date: string | null;
     target_date: string | null;
+    reminders_enabled?: boolean;
+    reminder_days?: number[] | null;
+    overdue_reminders_enabled?: boolean;
     notes: string | null;
     category?: Category | null;
     milestones?: ProjectMilestone[];
@@ -113,13 +172,15 @@ export interface Project {
 export interface CalendarEvent {
     id: string | number;
     real_id?: number;
-    type?: 'event' | 'task' | 'milestone';
+    type?: 'event' | 'task' | 'milestone' | 'project';
     title: string;
     description?: string | null;
     start_time?: string;
     end_time?: string;
     date?: string | null;
+    due_time?: string | null;
     all_day?: boolean;
+    reminder_minutes?: number | null;
     location?: string | null;
     color?: string | null;
     priority?: string;
@@ -138,10 +199,46 @@ export interface Habit {
     today_status?: 'completed' | 'partial' | 'not_completed' | 'none' | 'pending';
     today_notes?: string | null;
     completed_in_7_days?: number;
+    current_streak?: number;
+    best_streak?: number;
+    total_completed_days?: number;
+    weekly_consistency?: number;
+    monthly_consistency?: number;
+    completion_percentage?: number;
     history?: {
         date: string;
         status: 'completed' | 'partial' | 'not_completed' | 'none';
         notes: string | null;
+    }[];
+}
+
+export interface HabitHeatmapDay {
+    date: string;
+    day_number: number;
+    is_current_month: boolean;
+    is_today: boolean;
+    is_future: boolean;
+    completed_count: number;
+    partial_count: number;
+    total_habits: number;
+    ratio: number;
+    level: number;
+}
+
+export interface HabitHeatmap {
+    month: string;
+    month_label: string;
+    prev_month: string;
+    next_month: string;
+    week_start: number;
+    days: HabitHeatmapDay[];
+    monthly_summary: {
+        month: string;
+        label: string;
+        active_days: number;
+        days_in_span: number;
+        completed_checkins: number;
+        consistency_percent: number;
     }[];
 }
 
@@ -172,6 +269,57 @@ export interface PhoneUsageLog {
     notes: string | null;
 }
 
+export interface AppNotificationPayload {
+    category: NotificationCategory;
+    title: string;
+    message: string;
+    action_url?: string;
+    entity_type?: string | null;
+    entity_id?: number | null;
+    reminder_id?: number | null;
+    is_critical?: boolean;
+    dedup_key?: string | null;
+    meta?: Record<string, unknown>;
+}
+
+export interface AppNotification {
+    id: string;
+    data: AppNotificationPayload;
+    read_at: string | null;
+    created_at: string | null;
+}
+
+export interface ActiveFocusSession {
+    id: number;
+    task_id: number | null;
+    task: {
+        id: number;
+        title: string;
+        estimated_duration: number | null;
+        actual_duration: number | null;
+    } | null;
+    mode: 'focus' | 'short_break' | 'long_break';
+    planned_minutes: number;
+    elapsed_seconds: number;
+    remaining_seconds: number;
+    logged_minutes: number;
+    status: 'running' | 'paused' | 'completed' | 'stopped';
+    started_at: string | null;
+    last_resumed_at: string | null;
+    server_now_ms: number;
+}
+
+export interface BackupEntry {
+    filename: string;
+    created_at: string;
+    size_bytes: number;
+    size_human: string;
+    sha256: string;
+    integrity_status: string;
+    trigger: string;
+    tables_count: number | null;
+}
+
 export type PageProps<
     T extends Record<string, unknown> = Record<string, unknown>,
 > = T & {
@@ -180,6 +328,11 @@ export type PageProps<
     };
     categories: Category[];
     tags: Tag[];
+    notificationsSummary?: {
+        unread_count: number;
+        items: AppNotification[];
+    };
+    activeFocusSession?: ActiveFocusSession | null;
     flash: {
         success: string | null;
         error: string | null;

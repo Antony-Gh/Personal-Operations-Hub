@@ -25,7 +25,6 @@
         "@laravel/multiplex": "^0.4.1"
     },
     "dependencies": {
-        "@lucide/vue": "^1.66.0",
         "axios": "^1.21.0",
         "lucide-vue-next": "^1.0.0"
     }

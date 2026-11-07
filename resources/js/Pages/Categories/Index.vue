@@ -113,9 +113,9 @@ const moveCategory = (index: number, direction: 'up' | 'down') => {
 </script>
 
 <template>
-    <Head title="Areas & Categories" />
-
     <AuthenticatedLayout title="Areas & Categories">
+        <Head title="Areas & Categories" />
+
         <div class="max-w-5xl mx-auto space-y-6">
             <!-- Header -->
             <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white dark:bg-neutral-900 p-5 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">

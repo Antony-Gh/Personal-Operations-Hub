@@ -1,7 +1,5 @@
 <?php
 
-use App\Models\User;
-
 test('registration screen can be rendered when allow_registration is enabled', function () {
     config(['auth.allow_registration' => true]);
 

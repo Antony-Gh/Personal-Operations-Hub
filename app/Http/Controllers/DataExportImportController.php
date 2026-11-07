@@ -2,17 +2,10 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\CalendarEvent;
 use App\Models\Category;
-use App\Models\DailyPlan;
-use App\Models\Habit;
-use App\Models\HabitCheckIn;
-use App\Models\PhoneUsageLog;
 use App\Models\Project;
-use App\Models\Tag;
 use App\Models\Task;
-use App\Models\UserSetting;
-use App\Models\WeeklyReview;
+use App\Services\DatabaseBackupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -21,12 +14,25 @@ use Inertia\Inertia;
 use Inertia\Response;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Throwable;
 
 class DataExportImportController extends Controller
 {
-    public function index(): Response
+    public function index(Request $request, DatabaseBackupService $backupService): Response
     {
-        return Inertia::render('Settings/DataManagement');
+        $user = $request->user();
+        $setting = $user->ensureSetting();
+        $backups = $backupService->listBackups();
+
+        return Inertia::render('Settings/DataManagement', [
+            'backups' => $backups,
+            'lastBackup' => $backups[0] ?? null,
+            'backupConfig' => [
+                'backup_enabled' => $setting->backup_enabled,
+                'backup_retention_days' => $setting->backup_retention_days,
+                'directory' => $backupService->backupDirectory(),
+            ],
+        ]);
     }
 
     public function exportJson(Request $request): StreamedResponse
@@ -34,7 +40,7 @@ class DataExportImportController extends Controller
         $user = $request->user();
 
         $data = [
-            'version' => '1.0',
+            'version' => '2.0',
             'exported_at' => now()->toIso8601String(),
             'user' => [
                 'name' => $user->name,
@@ -50,11 +56,12 @@ class DataExportImportController extends Controller
             'habits' => $user->habits()->with('checkIns')->get(),
             'weekly_reviews' => $user->weeklyReviews,
             'phone_usage_logs' => $user->phoneUsageLogs,
+            'focus_sessions' => $user->focusSessions()->latest()->limit(500)->get(),
         ];
 
-        $filename = 'personal-operations-hub-backup-' . now()->format('Y-m-d-His') . '.json';
+        $filename = 'personal-operations-hub-backup-'.now()->format('Y-m-d-His').'.json';
 
-        return response()->streamDownload(function () use ($data) {
+        return response()->streamDownload(function () use ($data): void {
             echo json_encode($data, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
         }, $filename, [
             'Content-Type' => 'application/json',
@@ -66,11 +73,12 @@ class DataExportImportController extends Controller
         $user = $request->user();
         $tasks = Task::with(['category', 'project', 'tags'])
             ->where('user_id', $user->id)
+            ->orderByPriority()
             ->get();
 
-        $filename = 'tasks-export-' . now()->format('Y-m-d') . '.csv';
+        $filename = 'tasks-export-'.now()->format('Y-m-d').'.csv';
 
-        return response()->streamDownload(function () use ($tasks) {
+        return response()->streamDownload(function () use ($tasks): void {
             $handle = fopen('php://output', 'w');
             fputcsv($handle, [
                 'ID',
@@ -81,6 +89,7 @@ class DataExportImportController extends Controller
                 'Priority',
                 'Status',
                 'Due Date',
+                'Due Time',
                 'Start Date',
                 'Est. Duration (min)',
                 'Actual Duration (min)',
@@ -100,6 +109,7 @@ class DataExportImportController extends Controller
                     $task->priority,
                     $task->status,
                     $task->due_date?->toDateString(),
+                    $task->due_time,
                     $task->start_date?->toDateString(),
                     $task->estimated_duration,
                     $task->actual_duration,
@@ -120,15 +130,71 @@ class DataExportImportController extends Controller
     {
         $dbPath = database_path('database.sqlite');
 
-        if (!file_exists($dbPath)) {
+        if (! file_exists($dbPath)) {
             return back()->with('error', 'Database file not found.');
         }
 
-        $filename = 'database-backup-' . now()->format('Y-m-d-His') . '.sqlite';
+        $filename = 'database-backup-'.now()->format('Y-m-d-His').'.sqlite';
 
         return response()->download($dbPath, $filename, [
             'Content-Type' => 'application/x-sqlite3',
         ]);
+    }
+
+    public function createManualBackup(Request $request, DatabaseBackupService $backupService): RedirectResponse
+    {
+        try {
+            $meta = $backupService->createBackup('manual', $request->user());
+            $retentionDays = $request->user()->ensureSetting()->backup_retention_days;
+            $backupService->pruneOldBackups($retentionDays);
+
+            return back()->with('success', "Verified SQLite backup created ({$meta['filename']}).");
+        } catch (Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function downloadManagedBackup(string $filename, DatabaseBackupService $backupService): BinaryFileResponse|RedirectResponse
+    {
+        try {
+            $path = $backupService->resolveBackupPath($filename);
+
+            return response()->download($path, basename($path), [
+                'Content-Type' => 'application/x-sqlite3',
+            ]);
+        } catch (Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function deleteManagedBackup(string $filename, DatabaseBackupService $backupService): RedirectResponse
+    {
+        try {
+            $backupService->deleteBackup($filename);
+
+            return back()->with('success', 'Backup removed.');
+        } catch (Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
+    }
+
+    public function restoreManagedBackup(Request $request, DatabaseBackupService $backupService): RedirectResponse
+    {
+        $validated = $request->validate([
+            'filename' => 'required|string|max:255',
+            'confirmation' => 'required|string|in:RESTORE',
+        ]);
+
+        try {
+            $result = $backupService->restoreFromBackup($validated['filename']);
+
+            return back()->with(
+                'success',
+                "Database restored from {$result['restored_from']}. Pre-restore safety snapshot saved as {$result['pre_restore_snapshot']}."
+            );
+        } catch (Throwable $e) {
+            return back()->with('error', $e->getMessage());
+        }
     }
 
     public function previewImport(Request $request): JsonResponse
@@ -138,9 +204,9 @@ class DataExportImportController extends Controller
         ]);
 
         $content = file_get_contents($request->file('backup_file')->getRealPath());
-        $data = json_decode($content, true);
+        $data = json_decode((string) $content, true);
 
-        if (!$data || !is_array($data) || !isset($data['version'])) {
+        if (! $data || ! is_array($data) || ! isset($data['version'])) {
             return response()->json([
                 'valid' => false,
                 'message' => 'Invalid backup file structure.',
@@ -176,9 +242,8 @@ class DataExportImportController extends Controller
         $payload = $validated['payload'];
         $mode = $validated['mode'];
 
-        DB::transaction(function () use ($user, $payload, $mode) {
+        DB::transaction(function () use ($user, $payload, $mode): void {
             if ($mode === 'replace') {
-                // Safely clean existing user records
                 $user->tasks()->forceDelete();
                 $user->projects()->forceDelete();
                 $user->categories()->forceDelete();
@@ -231,6 +296,7 @@ class DataExportImportController extends Controller
                         'priority' => $tData['priority'] ?? 'medium',
                         'status' => $tData['status'] ?? 'not_started',
                         'due_date' => $tData['due_date'] ?? null,
+                        'due_time' => $tData['due_time'] ?? null,
                         'start_date' => $tData['start_date'] ?? null,
                         'estimated_duration' => $tData['estimated_duration'] ?? null,
                         'actual_duration' => $tData['actual_duration'] ?? null,
@@ -244,4 +310,3 @@ class DataExportImportController extends Controller
         return back()->with('success', 'Data imported successfully.');
     }
 }
-

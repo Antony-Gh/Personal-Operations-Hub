@@ -7,11 +7,12 @@ use App\Models\DailyPlan;
 use App\Models\DailyPlanTask;
 use App\Models\PhoneUsageLog;
 use App\Models\Task;
-use Illuminate\Validation\Rule;
+use App\Support\UserDateTime;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,7 +21,8 @@ class DailyPlanController extends Controller
     public function index(Request $request): Response
     {
         $user = $request->user();
-        $date = $request->input('date', Carbon::today()->toDateString());
+        $tz = UserDateTime::resolveTimezone($user);
+        $date = $request->input('date', $user->localTodayDate());
 
         $dailyPlan = DailyPlan::firstOrCreate(
             ['user_id' => $user->id, 'date' => $date],
@@ -46,6 +48,7 @@ class DailyPlanController extends Controller
                 $task->plan_task_id = $pt->id;
                 $task->plan_sort_order = $pt->sort_order;
             }
+
             return $task;
         })->filter()->sortBy('plan_sort_order')->values();
 
@@ -56,7 +59,7 @@ class DailyPlanController extends Controller
             ->where('user_id', $user->id)
             ->where('due_date', $date)
             ->whereNotIn('id', $plannedTaskIds)
-            ->orderBy('priority', 'desc')
+            ->orderByPriority()
             ->get();
 
         // General available active tasks for quick adding
@@ -65,12 +68,18 @@ class DailyPlanController extends Controller
             ->where('status', '!=', 'completed')
             ->whereNotIn('id', $plannedTaskIds)
             ->orderBy('due_date', 'asc')
+            ->orderByPriority()
             ->take(20)
             ->get();
 
-        // Fixed commitments for this date
+        $dayLocal = Carbon::createFromFormat('Y-m-d', $date, $tz);
+
+        // Fixed commitments for this date in user's timezone
         $fixedCommitments = CalendarEvent::where('user_id', $user->id)
-            ->whereDate('start_time', $date)
+            ->whereBetween('start_time', [
+                $dayLocal->copy()->startOfDay()->utc(),
+                $dayLocal->copy()->endOfDay()->utc(),
+            ])
             ->orderBy('start_time', 'asc')
             ->get();
 
@@ -81,7 +90,7 @@ class DailyPlanController extends Controller
 
         return Inertia::render('MyDay/Index', [
             'date' => $date,
-            'formattedDate' => Carbon::parse($date)->isoFormat('dddd, MMMM D, YYYY'),
+            'formattedDate' => $dayLocal->isoFormat('dddd, MMMM D, YYYY'),
             'dailyPlan' => $dailyPlan,
             'plannedTasks' => $plannedTasks,
             'unplannedDueTasks' => $unplannedDueTasks,
@@ -124,8 +133,7 @@ class DailyPlanController extends Controller
             'is_priority' => 'nullable|boolean',
         ]);
 
-        // Max 3 priorities enforcement
-        if (!empty($validated['is_priority']) && $validated['is_priority']) {
+        if (! empty($validated['is_priority']) && $validated['is_priority']) {
             $currentPriorities = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
                 ->where('is_priority', true)
                 ->count();
@@ -157,7 +165,7 @@ class DailyPlanController extends Controller
             ->where('task_id', $task->id)
             ->firstOrFail();
 
-        if (!$planTask->is_priority) {
+        if (! $planTask->is_priority) {
             $currentPriorities = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
                 ->where('is_priority', true)
                 ->count();
@@ -199,7 +207,7 @@ class DailyPlanController extends Controller
             ],
         ]);
 
-        DB::transaction(function () use ($validated, $dailyPlan) {
+        DB::transaction(function () use ($validated, $dailyPlan): void {
             foreach ($validated['order'] as $index => $taskId) {
                 DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
                     ->where('task_id', $taskId)
@@ -225,4 +233,3 @@ class DailyPlanController extends Controller
         return back()->with('success', 'Task rescheduled.');
     }
 }
-

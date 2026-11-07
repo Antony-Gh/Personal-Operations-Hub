@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BadHabit;
 use App\Models\Habit;
 use App\Models\Project;
 use App\Models\ProjectMilestone;
@@ -26,6 +27,7 @@ class CommandPaletteController extends Controller
             ->whereHas('project', fn ($pq) => $pq->where('user_id', $user->id));
 
         $habitsQuery = Habit::where('user_id', $user->id)->active();
+        $badHabitsQuery = BadHabit::where('user_id', $user->id)->active();
 
         if ($q !== '') {
             $tasksQuery->where(function ($sub) use ($q): void {
@@ -44,6 +46,13 @@ class CommandPaletteController extends Controller
             $habitsQuery->where(function ($sub) use ($q): void {
                 $sub->where('name', 'like', "%{$q}%")
                     ->orWhere('category', 'like', "%{$q}%");
+            });
+
+            $badHabitsQuery->where(function ($sub) use ($q): void {
+                $sub->where('name', 'like', "%{$q}%")
+                    ->orWhere('category', 'like', "%{$q}%")
+                    ->orWhere('trigger_cue', 'like', "%{$q}%")
+                    ->orWhere('replacement_action', 'like', "%{$q}%");
             });
         } else {
             $tasksQuery->where('status', '!=', 'completed');
@@ -108,12 +117,25 @@ class CommandPaletteController extends Controller
                 'url' => '/habits',
             ]);
 
+        $badHabits = $badHabitsQuery
+            ->orderBy('sort_order')
+            ->limit(6)
+            ->get()
+            ->map(fn (BadHabit $bh): array => [
+                'id' => $bh->id,
+                'name' => $bh->name,
+                'category' => $bh->category,
+                'replacement_action' => $bh->replacement_action,
+                'url' => '/bad-habits',
+            ]);
+
         return response()->json([
             'query' => $q,
             'tasks' => $tasks,
             'projects' => $projects,
             'milestones' => $milestones,
             'habits' => $habits,
+            'bad_habits' => $badHabits,
         ]);
     }
 }

@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BadHabit;
+use App\Models\BadHabitCheckIn;
 use App\Models\DailyPlan;
 use App\Models\FocusSession;
 use App\Models\Habit;
@@ -10,6 +12,7 @@ use App\Models\PhoneUsageLog;
 use App\Models\Project;
 use App\Models\Reminder;
 use App\Models\Task;
+use App\Services\BadHabitAnalyticsService;
 use App\Services\HabitAnalyticsService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -17,8 +20,11 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    public function index(Request $request, HabitAnalyticsService $habitAnalytics): Response
-    {
+    public function index(
+        Request $request,
+        HabitAnalyticsService $habitAnalytics,
+        BadHabitAnalyticsService $badHabitAnalytics,
+    ): Response {
         $user = $request->user();
         $localToday = $user->localToday();
         $today = $localToday->toDateString();
@@ -144,6 +150,38 @@ class DashboardController extends Controller
             ];
         });
 
+        // 5b. Bad Habits (Habits to Break) Check-ins for Today
+        $badHabits = BadHabit::with('checkIns')
+            ->where('user_id', $user->id)
+            ->active()
+            ->orderBy('sort_order')
+            ->get();
+
+        $todayBadCheckIns = BadHabitCheckIn::where('user_id', $user->id)
+            ->where('date', $today)
+            ->get()
+            ->keyBy('bad_habit_id');
+
+        $badHabitsSummary = $badHabits->map(function (BadHabit $badHabit) use ($todayBadCheckIns, $badHabitAnalytics, $user): array {
+            $checkIn = $todayBadCheckIns->get($badHabit->id);
+            $metrics = $badHabitAnalytics->calculateMetrics($badHabit, $user, $badHabit->checkIns);
+
+            return [
+                'id' => $badHabit->id,
+                'name' => $badHabit->name,
+                'category' => $badHabit->category,
+                'trigger_cue' => $badHabit->trigger_cue,
+                'replacement_action' => $badHabit->replacement_action,
+                'has_daily_limit' => $badHabit->has_daily_limit,
+                'daily_limit_value' => $badHabit->daily_limit_value,
+                'daily_limit_unit' => $badHabit->daily_limit_unit,
+                'status' => $checkIn ? $checkIn->status : 'pending',
+                'observed_value' => $checkIn?->observed_value,
+                'current_clean_streak' => $metrics['current_clean_streak'],
+                'best_clean_streak' => $metrics['best_clean_streak'],
+            ];
+        });
+
         // 6. Phone Usage Today
         $phoneUsage = PhoneUsageLog::where('user_id', $user->id)
             ->where('date', $today)
@@ -179,6 +217,7 @@ class DashboardController extends Controller
             'areas' => $categories,
             'projects' => $projects,
             'habits' => $habitsSummary,
+            'badHabits' => $badHabitsSummary,
             'phoneUsage' => [
                 'minutes' => $phoneUsage?->minutes ?? 0,
                 'target' => $targetMinutes,

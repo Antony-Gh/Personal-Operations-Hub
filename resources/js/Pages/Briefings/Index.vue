@@ -9,6 +9,8 @@ import {
     AlertTriangle,
     CheckCircle2,
     Sparkles,
+    ShieldAlert,
+    ShieldCheck,
     FolderKanban,
     Timer,
     Bell,
@@ -32,6 +34,11 @@ const props = defineProps<{
             total_count: number;
             items: any[];
         };
+        bad_habits?: {
+            clean_count: number;
+            total_count: number;
+            items: any[];
+        };
         calendar_events: any[];
         reminders: any[];
     };
@@ -48,6 +55,10 @@ const props = defineProps<{
         };
         habit_summary: {
             average_consistency: number;
+            items: any[];
+        };
+        bad_habit_summary?: {
+            average_clean_rate: number;
             items: any[];
         };
         projects: any[];
@@ -286,6 +297,40 @@ const toggleTask = (taskId: number) => {
                                 </div>
                             </div>
                         </div>
+
+                        <div
+                            v-if="dailyBriefing.bad_habits && dailyBriefing.bad_habits.total_count > 0"
+                            class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5"
+                        >
+                            <div class="flex items-center justify-between mb-3">
+                                <h3 class="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
+                                    <ShieldAlert class="w-4 h-4 text-rose-500" /> Habits to Break ({{ dailyBriefing.bad_habits.clean_count }}/{{ dailyBriefing.bad_habits.total_count }} clean)
+                                </h3>
+                                <Link :href="route('bad-habits.index')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                                    Open
+                                </Link>
+                            </div>
+                            <div class="space-y-2.5">
+                                <div
+                                    v-for="bh in dailyBriefing.bad_habits.items"
+                                    :key="bh.id"
+                                    class="text-xs py-1.5 border-b last:border-0 border-neutral-100 dark:border-neutral-800"
+                                >
+                                    <div class="flex items-center justify-between">
+                                        <span class="font-medium text-neutral-800 dark:text-neutral-200">{{ bh.name }}</span>
+                                        <span
+                                            class="inline-flex items-center gap-1 text-[11px] font-semibold"
+                                            :class="bh.status === 'clean' ? 'text-emerald-600' : bh.status === 'slipped' ? 'text-rose-500' : 'text-neutral-400'"
+                                        >
+                                            <ShieldCheck class="w-3 h-3" /> {{ bh.current_clean_streak }}d • {{ bh.status }}
+                                        </span>
+                                    </div>
+                                    <p v-if="bh.replacement_action" class="text-[11px] text-neutral-400 mt-0.5">
+                                        Instead: {{ bh.replacement_action }}
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -380,6 +425,37 @@ const toggleTask = (taskId: number) => {
                             >
                                 <span class="font-medium text-neutral-900 dark:text-neutral-100 truncate">{{ t.title }}</span>
                                 <span class="text-neutral-500 font-mono text-[11px] ml-2 shrink-0">{{ t.due_date }}</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Weekly Clean Streaks Summary -->
+                    <div
+                        v-if="weeklyDigest.bad_habit_summary && weeklyDigest.bad_habit_summary.items.length > 0"
+                        class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 lg:col-span-2"
+                    >
+                        <div class="flex items-center justify-between mb-3">
+                            <h3 class="text-sm font-semibold text-neutral-900 dark:text-white flex items-center gap-2">
+                                <ShieldCheck class="w-4 h-4 text-emerald-500" /> Bad Habits Weekly Clean Rate ({{ weeklyDigest.bad_habit_summary.average_clean_rate }}%)
+                            </h3>
+                            <Link :href="route('bad-habits.index')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                                View Bad Habits
+                            </Link>
+                        </div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            <div
+                                v-for="bh in weeklyDigest.bad_habit_summary.items"
+                                :key="bh.id"
+                                class="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 text-xs flex items-center justify-between"
+                            >
+                                <div>
+                                    <p class="font-semibold text-neutral-900 dark:text-white">{{ bh.name }}</p>
+                                    <p class="text-[11px] text-neutral-400">Best: {{ bh.best_clean_streak }}d</p>
+                                </div>
+                                <div class="text-right">
+                                    <p class="font-bold text-emerald-600 dark:text-emerald-400">{{ bh.current_clean_streak }}d clean</p>
+                                    <p class="text-[11px] text-neutral-500">{{ bh.weekly_clean_rate }}% wk</p>
+                                </div>
                             </div>
                         </div>
                     </div>

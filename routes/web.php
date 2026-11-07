@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\BadHabitController;
 use App\Http\Controllers\BriefingController;
 use App\Http\Controllers\CalendarController;
 use App\Http\Controllers\CalendarFeedController;
@@ -95,12 +96,19 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::delete('/calendar/events/{event}', [CalendarController::class, 'destroyEvent'])->name('calendar.events.destroy');
     Route::post('/calendar/tasks/{task}/move', [CalendarController::class, 'moveTask'])->name('calendar.tasks.move');
 
-    // 7. Habits
+    // 7. Habits & Bad Habits
     Route::get('/habits', [HabitController::class, 'index'])->name('habits.index');
     Route::post('/habits', [HabitController::class, 'store'])->name('habits.store');
     Route::put('/habits/{habit}', [HabitController::class, 'update'])->name('habits.update');
     Route::delete('/habits/{habit}', [HabitController::class, 'destroy'])->name('habits.destroy');
     Route::post('/habits/{habit}/check-in', [HabitController::class, 'checkIn'])->name('habits.check-in');
+
+    Route::get('/bad-habits', [BadHabitController::class, 'index'])->name('bad-habits.index');
+    Route::post('/bad-habits', [BadHabitController::class, 'store'])->name('bad-habits.store');
+    Route::put('/bad-habits/{badHabit}', [BadHabitController::class, 'update'])->name('bad-habits.update');
+    Route::post('/bad-habits/{badHabit}/check-in', [BadHabitController::class, 'checkIn'])->name('bad-habits.check-in');
+    Route::post('/bad-habits/{badHabit}/restore', [BadHabitController::class, 'restore'])->name('bad-habits.restore');
+    Route::delete('/bad-habits/{badHabit}', [BadHabitController::class, 'destroy'])->name('bad-habits.destroy');
 
     // 8. Weekly Review
     Route::get('/weekly-review', [WeeklyReviewController::class, 'index'])->name('weekly-review.index');

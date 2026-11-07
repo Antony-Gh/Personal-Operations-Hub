@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BadHabit;
 use App\Models\Category;
 use App\Models\Project;
 use App\Models\Task;
@@ -54,6 +55,7 @@ class DataExportImportController extends Controller
             'daily_plans' => $user->dailyPlans()->with('planTasks')->get(),
             'calendar_events' => $user->calendarEvents,
             'habits' => $user->habits()->with('checkIns')->get(),
+            'bad_habits' => $user->badHabits()->with('checkIns')->get(),
             'weekly_reviews' => $user->weeklyReviews,
             'phone_usage_logs' => $user->phoneUsageLogs,
             'focus_sessions' => $user->focusSessions()->latest()->limit(500)->get(),
@@ -220,6 +222,7 @@ class DataExportImportController extends Controller
             'projects_count' => count($data['projects'] ?? []),
             'tasks_count' => count($data['tasks'] ?? []),
             'habits_count' => count($data['habits'] ?? []),
+            'bad_habits_count' => count($data['bad_habits'] ?? []),
             'calendar_events_count' => count($data['calendar_events'] ?? []),
             'weekly_reviews_count' => count($data['weekly_reviews'] ?? []),
         ];
@@ -248,6 +251,7 @@ class DataExportImportController extends Controller
                 $user->projects()->forceDelete();
                 $user->categories()->forceDelete();
                 $user->habits()->delete();
+                $user->badHabits()->delete();
                 $user->calendarEvents()->delete();
                 $user->weeklyReviews()->delete();
                 $user->dailyPlans()->delete();
@@ -302,6 +306,24 @@ class DataExportImportController extends Controller
                         'actual_duration' => $tData['actual_duration'] ?? null,
                         'notes' => $tData['notes'] ?? null,
                         'next_action' => $tData['next_action'] ?? null,
+                    ]
+                );
+            }
+
+            foreach ($payload['bad_habits'] ?? [] as $bhData) {
+                BadHabit::firstOrCreate(
+                    ['user_id' => $user->id, 'name' => $bhData['name']],
+                    [
+                        'description' => $bhData['description'] ?? null,
+                        'category' => $bhData['category'] ?? 'Digital Discipline',
+                        'trigger_cue' => $bhData['trigger_cue'] ?? null,
+                        'replacement_action' => $bhData['replacement_action'] ?? null,
+                        'has_daily_limit' => (bool) ($bhData['has_daily_limit'] ?? false),
+                        'daily_limit_value' => $bhData['daily_limit_value'] ?? null,
+                        'daily_limit_unit' => $bhData['daily_limit_unit'] ?? 'times',
+                        'target_clean_days_per_week' => $bhData['target_clean_days_per_week'] ?? 7,
+                        'sort_order' => $bhData['sort_order'] ?? 0,
+                        'is_archived' => (bool) ($bhData['is_archived'] ?? false),
                     ]
                 );
             }

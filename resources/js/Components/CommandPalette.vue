@@ -11,6 +11,7 @@ import {
     FolderKanban,
     Flag,
     Sparkles,
+    ShieldAlert,
     Plus,
     Timer,
     Sun,
@@ -42,11 +43,13 @@ const remoteResults = ref<{
     projects: any[];
     milestones: any[];
     habits: any[];
+    bad_habits: any[];
 }>({
     tasks: [],
     projects: [],
     milestones: [],
     habits: [],
+    bad_habits: [],
 });
 
 let debounceHandle: ReturnType<typeof setTimeout> | null = null;
@@ -130,6 +133,14 @@ const quickActions = computed(() => [
         run: () => router.visit(route('calendar.index')),
     },
     {
+        id: 'nav-bad-habits',
+        group: 'Navigation',
+        title: 'Go to Bad Habits & Recovery',
+        subtitle: 'Clean streaks, trigger cues, daily caps & slip reflections',
+        icon: ShieldAlert,
+        run: () => router.visit(route('bad-habits.index')),
+    },
+    {
         id: 'nav-backups',
         group: 'Navigation',
         title: 'Manage Automated SQLite Backups',
@@ -209,6 +220,17 @@ const flattenedItems = computed(() => {
         });
     }
 
+    for (const bh of remoteResults.value.bad_habits) {
+        list.push({
+            id: `bad-habit-${bh.id}`,
+            group: 'Bad Habits',
+            title: bh.name,
+            subtitle: [bh.category, bh.replacement_action ? `Instead: ${bh.replacement_action}` : null].filter(Boolean).join(' • '),
+            icon: ShieldAlert,
+            run: () => router.visit(bh.url),
+        });
+    }
+
     return list;
 });
 
@@ -237,6 +259,7 @@ const fetchRemote = async (q: string) => {
             projects: res.data.projects || [],
             milestones: res.data.milestones || [],
             habits: res.data.habits || [],
+            bad_habits: res.data.bad_habits || [],
         };
     } catch {
         // Ignore transient errors

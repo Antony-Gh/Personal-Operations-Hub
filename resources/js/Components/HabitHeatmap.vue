@@ -4,9 +4,21 @@ import { router } from '@inertiajs/vue3';
 import { HabitHeatmap } from '@/types';
 import { ChevronLeft, ChevronRight } from 'lucide-vue-next';
 
-const props = defineProps<{
-    heatmap: HabitHeatmap;
-}>();
+const props = withDefaults(
+    defineProps<{
+        heatmap: HabitHeatmap;
+        routeName?: string;
+        title?: string;
+        subtitle?: string;
+        unitLabel?: string;
+    }>(),
+    {
+        routeName: 'habits.index',
+        title: 'Consistency Heatmap',
+        subtitle: 'Daily habit completion intensity across active habits',
+        unitLabel: 'completed',
+    }
+);
 
 const weekdayHeaders = computed(() => {
     return props.heatmap.week_start === 0
@@ -16,7 +28,7 @@ const weekdayHeaders = computed(() => {
 
 const navigateMonth = (targetMonth: string) => {
     router.get(
-        route('habits.index'),
+        route(props.routeName),
         { heatmap_month: targetMonth },
         { preserveScroll: true, preserveState: true }
     );
@@ -47,10 +59,10 @@ const levelCellClass = (level: number, isCurrentMonth: boolean) => {
                 <div class="flex items-center justify-between mb-4">
                     <div>
                         <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">
-                            Consistency Heatmap — {{ heatmap.month_label }}
+                            {{ title }} — {{ heatmap.month_label }}
                         </h3>
                         <p class="text-xs text-neutral-500 dark:text-neutral-400">
-                            Daily habit completion intensity across active habits
+                            {{ subtitle }}
                         </p>
                     </div>
                     <div class="flex items-center gap-1">
@@ -87,7 +99,7 @@ const levelCellClass = (level: number, isCurrentMonth: boolean) => {
                     <div
                         v-for="day in heatmap.days"
                         :key="day.date"
-                        :title="`${day.date}: ${day.completed_count}/${day.total_habits} completed (${day.ratio}%)`"
+                        :title="`${day.date}: ${day.completed_count}/${day.total_habits} ${unitLabel} (${day.ratio}%)`"
                         class="h-9 rounded-lg flex flex-col items-center justify-center text-xs font-medium transition select-none"
                         :class="[
                             levelCellClass(day.level, day.is_current_month),

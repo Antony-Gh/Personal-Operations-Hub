@@ -212,6 +212,49 @@ export interface Habit {
     }[];
 }
 
+export interface BadHabitReflection {
+    date: string;
+    status: 'clean' | 'minor_slip' | 'slipped';
+    observed_value: number | null;
+    trigger_note: string | null;
+    notes: string | null;
+}
+
+export interface BadHabit {
+    id: number;
+    user_id?: number;
+    name: string;
+    description: string | null;
+    category: string;
+    trigger_cue: string | null;
+    replacement_action: string | null;
+    has_daily_limit: boolean;
+    daily_limit_value: number | null;
+    daily_limit_unit: 'times' | 'minutes';
+    target_clean_days_per_week: number;
+    today_status?: 'clean' | 'minor_slip' | 'slipped' | 'none' | 'pending';
+    today_observed_value?: number | null;
+    today_trigger_note?: string | null;
+    today_notes?: string | null;
+    current_clean_streak?: number;
+    best_clean_streak?: number;
+    total_clean_days?: number;
+    minor_slips_count?: number;
+    slips_count?: number;
+    clean_in_7_days?: number;
+    weekly_clean_rate?: number;
+    monthly_clean_rate?: number;
+    overall_clean_percentage?: number;
+    recent_reflections?: BadHabitReflection[];
+    history?: {
+        date: string;
+        status: 'clean' | 'minor_slip' | 'slipped' | 'none';
+        observed_value: number | null;
+        trigger_note: string | null;
+        notes: string | null;
+    }[];
+}
+
 export interface HabitHeatmapDay {
     date: string;
     day_number: number;

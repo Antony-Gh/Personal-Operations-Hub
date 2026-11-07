@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Models\BadHabit;
+use App\Models\BadHabitCheckIn;
 use App\Models\CalendarEvent;
 use App\Models\DailyPlan;
 use App\Models\FocusSession;
@@ -20,6 +22,7 @@ class BriefingService
 {
     public function __construct(
         public HabitAnalyticsService $habitAnalytics,
+        public BadHabitAnalyticsService $badHabitAnalytics,
     ) {}
 
     /**
@@ -120,6 +123,31 @@ class BriefingService
             ];
         });
 
+        $badHabits = BadHabit::with('checkIns')->where('user_id', $user->id)->active()->orderBy('sort_order')->get();
+        $todayBadCheckIns = BadHabitCheckIn::where('user_id', $user->id)
+            ->where('date', $todayStr)
+            ->get()
+            ->keyBy('bad_habit_id');
+
+        $badHabitItems = $badHabits->map(function (BadHabit $bh) use ($todayBadCheckIns, $user): array {
+            $ci = $todayBadCheckIns->get($bh->id);
+            $metrics = $this->badHabitAnalytics->calculateMetrics($bh, $user, $bh->checkIns);
+
+            return [
+                'id' => $bh->id,
+                'name' => $bh->name,
+                'category' => $bh->category,
+                'trigger_cue' => $bh->trigger_cue,
+                'replacement_action' => $bh->replacement_action,
+                'has_daily_limit' => $bh->has_daily_limit,
+                'daily_limit_value' => $bh->daily_limit_value,
+                'daily_limit_unit' => $bh->daily_limit_unit,
+                'observed_value' => $ci?->observed_value,
+                'status' => $ci?->status ?? 'pending',
+                'current_clean_streak' => $metrics['current_clean_streak'],
+            ];
+        });
+
         $dayStartUtc = $localDay->copy()->startOfDay()->utc();
         $dayEndUtc = $localDay->copy()->endOfDay()->utc();
 
@@ -149,6 +177,11 @@ class BriefingService
                 'completed_count' => $habitItems->whereIn('status', ['completed', 'partial'])->count(),
                 'total_count' => $habitItems->count(),
                 'items' => $habitItems->values(),
+            ],
+            'bad_habits' => [
+                'clean_count' => $badHabitItems->where('status', 'clean')->count(),
+                'total_count' => $badHabitItems->count(),
+                'items' => $badHabitItems->values(),
             ],
             'calendar_events' => $events,
             'reminders' => $remindersToday,
@@ -228,6 +261,23 @@ class BriefingService
             ? (int) round($habitConsistency->avg('weekly_consistency'))
             : 0;
 
+        $badHabits = BadHabit::with('checkIns')->where('user_id', $user->id)->active()->orderBy('sort_order')->get();
+        $badHabitConsistency = $badHabits->map(function (BadHabit $bh) use ($user): array {
+            $metrics = $this->badHabitAnalytics->calculateMetrics($bh, $user, $bh->checkIns);
+
+            return [
+                'id' => $bh->id,
+                'name' => $bh->name,
+                'weekly_clean_rate' => $metrics['weekly_clean_rate'],
+                'current_clean_streak' => $metrics['current_clean_streak'],
+                'best_clean_streak' => $metrics['best_clean_streak'],
+            ];
+        });
+
+        $avgBadHabitCleanRate = $badHabitConsistency->isNotEmpty()
+            ? (int) round($badHabitConsistency->avg('weekly_clean_rate'))
+            : 0;
+
         $projects = Project::with('category')
             ->where('user_id', $user->id)
             ->active()
@@ -267,6 +317,10 @@ class BriefingService
         if ($topStreakHabit && $topStreakHabit['current_streak'] >= 3) {
             $achievements[] = "Maintained a {$topStreakHabit['current_streak']}-day streak on \"{$topStreakHabit['name']}\".";
         }
+        $topCleanBadHabit = $badHabitConsistency->sortByDesc('current_clean_streak')->first();
+        if ($topCleanBadHabit && $topCleanBadHabit['current_clean_streak'] >= 3) {
+            $achievements[] = "Held a {$topCleanBadHabit['current_clean_streak']}-day clean streak avoiding \"{$topCleanBadHabit['name']}\".";
+        }
         if (empty($achievements)) {
             $achievements[] = 'Ready for a fresh, intentional week ahead.';
         }
@@ -285,6 +339,10 @@ class BriefingService
             'habit_summary' => [
                 'average_consistency' => $avgHabitConsistency,
                 'items' => $habitConsistency->values(),
+            ],
+            'bad_habit_summary' => [
+                'average_clean_rate' => $avgBadHabitCleanRate,
+                'items' => $badHabitConsistency->values(),
             ],
             'projects' => $projects,
             'achievements' => $achievements,

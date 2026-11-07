@@ -103,6 +103,11 @@ class User extends Authenticatable
         return $this->hasMany(Habit::class);
     }
 
+    public function badHabits(): HasMany
+    {
+        return $this->hasMany(BadHabit::class);
+    }
+
     public function weeklyReviews(): HasMany
     {
         return $this->hasMany(WeeklyReview::class);

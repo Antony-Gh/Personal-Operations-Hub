@@ -16,6 +16,8 @@ import {
     FolderKanban,
     ArrowUpRight,
     Flame,
+    ShieldAlert,
+    ShieldCheck,
     Check,
     Timer,
     Newspaper,
@@ -40,6 +42,21 @@ interface HabitSummary {
     best_streak?: number;
 }
 
+interface BadHabitSummary {
+    id: number;
+    name: string;
+    category: string;
+    trigger_cue: string | null;
+    replacement_action: string | null;
+    has_daily_limit: boolean;
+    daily_limit_value: number | null;
+    daily_limit_unit: 'times' | 'minutes';
+    status: 'clean' | 'minor_slip' | 'slipped' | 'pending';
+    observed_value: number | null;
+    current_clean_streak: number;
+    best_clean_streak: number;
+}
+
 const props = defineProps<{
     todayDate: string;
     metrics: MetricData;
@@ -49,6 +66,7 @@ const props = defineProps<{
     areas: Category[];
     projects: Project[];
     habits: HabitSummary[];
+    badHabits?: BadHabitSummary[];
     phoneUsage: {
         minutes: number;
         target: number;
@@ -74,6 +92,11 @@ const launchFocus = (task: Task) => {
 const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | 'not_completed') => {
     const today = getLocalDateString(page.props.auth.user?.setting?.timezone);
     router.post(route('habits.check-in', habitId), { date: today, status }, { preserveScroll: true });
+};
+
+const recordBadHabitCheckIn = (badHabitId: number, status: 'clean' | 'minor_slip' | 'slipped') => {
+    const today = getLocalDateString(page.props.auth.user?.setting?.timezone);
+    router.post(route('bad-habits.check-in', badHabitId), { date: today, status }, { preserveScroll: true });
 };
 </script>
 
@@ -448,6 +471,73 @@ const recordHabitCheckIn = (habitId: number, status: 'completed' | 'partial' | '
                                         title="Partially completed"
                                     >
                                         Partial
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Habits to Break (Clean Streaks) -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <div class="flex items-center gap-2">
+                                <span class="p-1.5 rounded-lg bg-rose-50 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400">
+                                    <ShieldAlert class="w-4 h-4" />
+                                </span>
+                                <div>
+                                    <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Bad Habits & Clean Streaks</h3>
+                                    <p class="text-[11px] text-neutral-400">Trigger awareness & recovery</p>
+                                </div>
+                            </div>
+                            <Link :href="route('bad-habits.index')" class="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">
+                                Bad Habits
+                            </Link>
+                        </div>
+
+                        <div v-if="!badHabits || badHabits.length === 0" class="text-center py-4 text-neutral-400 text-xs">
+                            No bad habits tracked yet.
+                        </div>
+                        <div v-else class="space-y-2.5">
+                            <div
+                                v-for="bh in badHabits"
+                                :key="bh.id"
+                                class="flex items-center justify-between gap-2 p-2.5 rounded-xl border border-neutral-100 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/30"
+                            >
+                                <div class="min-w-0">
+                                    <div class="flex items-center gap-1.5 flex-wrap">
+                                        <p class="text-xs font-medium text-neutral-900 dark:text-white truncate">{{ bh.name }}</p>
+                                        <span
+                                            v-if="bh.current_clean_streak > 0"
+                                            class="inline-flex items-center gap-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"
+                                        >
+                                            <ShieldCheck class="w-2.5 h-2.5" /> {{ bh.current_clean_streak }}d clean
+                                        </span>
+                                    </div>
+                                    <p v-if="bh.replacement_action" class="text-[10px] text-neutral-400 truncate">
+                                        Instead: {{ bh.replacement_action }}
+                                    </p>
+                                    <p v-else-if="bh.has_daily_limit && bh.daily_limit_value !== null" class="text-[10px] text-neutral-400">
+                                        Cap: {{ bh.observed_value ?? 0 }}/{{ bh.daily_limit_value }} {{ bh.daily_limit_unit }}
+                                    </p>
+                                </div>
+                                <div class="flex items-center gap-1 shrink-0">
+                                    <button
+                                        type="button"
+                                        @click="recordBadHabitCheckIn(bh.id, 'clean')"
+                                        class="px-2 py-1 rounded text-[11px] font-medium transition"
+                                        :class="bh.status === 'clean' ? 'bg-emerald-600 text-white shadow-xs' : 'bg-neutral-100 text-neutral-600 hover:bg-emerald-50 hover:text-emerald-700 dark:bg-neutral-800 dark:text-neutral-400'"
+                                        title="Stayed Clean"
+                                    >
+                                        Clean
+                                    </button>
+                                    <button
+                                        type="button"
+                                        @click="recordBadHabitCheckIn(bh.id, 'slipped')"
+                                        class="px-2 py-1 rounded text-[11px] font-medium transition"
+                                        :class="bh.status === 'slipped' ? 'bg-rose-600 text-white shadow-xs' : 'bg-neutral-100 text-neutral-600 hover:bg-rose-50 hover:text-rose-700 dark:bg-neutral-800 dark:text-neutral-400'"
+                                        title="Log Slip"
+                                    >
+                                        Slip
                                     </button>
                                 </div>
                             </div>

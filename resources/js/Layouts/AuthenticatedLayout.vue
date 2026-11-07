@@ -15,6 +15,7 @@ import {
     Calendar,
     HeartHandshake,
     Sparkles,
+    ShieldAlert,
     Settings,
     FileText,
     ChevronLeft,
@@ -52,6 +53,7 @@ const navItems = [
     { name: 'Projects', route: 'projects.index', icon: FolderKanban },
     { name: 'Calendar', route: 'calendar.index', icon: Calendar },
     { name: 'Habits', route: 'habits.index', icon: Sparkles },
+    { name: 'Bad Habits', route: 'bad-habits.index', icon: ShieldAlert },
     { name: 'Weekly Review', route: 'weekly-review.index', icon: HeartHandshake },
     { name: 'Settings', route: 'settings.index', icon: Settings },
 ];

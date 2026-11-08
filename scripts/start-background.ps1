@@ -143,12 +143,18 @@ if ((-not $NoBuildCheck) -and (-not (Test-Path $manifestPath))) {
     }
 }
 
-# Remove stale Vite hot file if Vite dev server is not listening so Laravel serves built assets cleanly
+# Remove Vite hot file when binding to 0.0.0.0 (so mobile clients load compiled assets over port 8000)
+# or when the local Vite dev compiler is not listening
 $hotFile = Join-Path $ProjectRoot "public\hot"
 if (Test-Path $hotFile) {
-    $viteListening = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
-    if (-not $viteListening) {
+    if ($BindHost -eq "0.0.0.0") {
         Remove-Item $hotFile -Force -ErrorAction SilentlyContinue
+        Write-Host "Removed public\hot file for 0.0.0.0 bind so mobile clients load compiled assets." -ForegroundColor Gray
+    } else {
+        $viteListening = Get-NetTCPConnection -LocalPort 5173 -State Listen -ErrorAction SilentlyContinue
+        if (-not $viteListening) {
+            Remove-Item $hotFile -Force -ErrorAction SilentlyContinue
+        }
     }
 }
 
@@ -167,9 +173,14 @@ if (-not $serverProc) {
     } else {
         $srvOut = Join-Path $LogDir "server.out.log"
         $srvErr = Join-Path $LogDir "server.err.log"
+        $pubDir = Join-Path $ProjectRoot "public"
+        $serverScript = Join-Path $ProjectRoot "vendor\laravel\framework\src\Illuminate\Foundation\resources\server.php"
+        if (-not (Test-Path $serverScript)) {
+            $serverScript = Join-Path $ProjectRoot "server.php"
+        }
         $startedSrv = Start-Process -FilePath $phpExe `
-            -ArgumentList "artisan serve --host=$BindHost --port=$Port --no-interaction" `
-            -WorkingDirectory $ProjectRoot `
+            -ArgumentList "-S ${BindHost}:${Port} `"$serverScript`"" `
+            -WorkingDirectory $pubDir `
             -WindowStyle Hidden `
             -RedirectStandardOutput $srvOut `
             -RedirectStandardError $srvErr `

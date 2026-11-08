@@ -66,7 +66,38 @@ try {
 
 Write-Host ""
 
-# 3. Restart Background Server if requested
+# 3. Prepare Frontend Production Bundle & Clear Vite Hot File
+# Mobile devices connect via LAN IP and cannot reach localhost Vite dev server (port 5173).
+# Removing public\hot ensures Laravel renders compiled production assets directly over port 8000.
+$hotFile = Join-Path $ProjectRoot "public\hot"
+if (Test-Path $hotFile) {
+    Remove-Item $hotFile -Force -ErrorAction SilentlyContinue
+    Write-Host "  [OK] Cleaned up Vite hot reload file (mobile devices will load compiled assets)." -ForegroundColor Green
+}
+
+$vitePidFile = Join-Path $RunDir "vite.pid"
+if (Test-Path $vitePidFile) {
+    $vRaw = (Get-Content $vitePidFile -ErrorAction SilentlyContinue | Out-String).Trim()
+    if ($vRaw -match '^\d+$') {
+        $vProc = Get-Process -Id ([int]$vRaw) -ErrorAction SilentlyContinue
+        if ($vProc -and ($vProc.ProcessName -match '^(node|cmd|npm)$')) {
+            Stop-Process -Id ([int]$vRaw) -Force -ErrorAction SilentlyContinue
+            Write-Host "  [OK] Stopped local Vite dev compiler to prioritize compiled production assets." -ForegroundColor Green
+        }
+    }
+    Remove-Item $vitePidFile -Force -ErrorAction SilentlyContinue
+}
+
+$manifestPath = Join-Path $ProjectRoot "public\build\manifest.json"
+if (-not (Test-Path $manifestPath)) {
+    Write-Host "  Building production frontend bundle for mobile access (npm run build)..." -ForegroundColor Cyan
+    $npmCmd = Get-Command "npm.cmd" -ErrorAction SilentlyContinue
+    if ($npmCmd) {
+        & $npmCmd.Source run build
+    }
+}
+
+# 4. Restart Background Server if requested
 if (-not $NoRestart) {
     Write-Host "  Restarting background services to listen on 0.0.0.0..." -ForegroundColor Cyan
     $stopScript = Join-Path $PSScriptRoot "stop-background.ps1"
@@ -84,7 +115,7 @@ if (-not $NoRestart) {
 
 Write-Host ""
 
-# 4. Display Connection URLs and QR Code
+# 5. Display Connection URLs and QR Code
 $phpCmd = Get-Command "php" -ErrorAction SilentlyContinue
 $phpExe = if ($phpCmd) { $phpCmd.Source } else { "php" }
 

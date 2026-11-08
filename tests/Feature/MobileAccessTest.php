@@ -101,3 +101,30 @@ test('authenticated user can toggle bind host to all interfaces', function () {
         }
     }
 });
+
+test('mobile requests render production assets and never reference localhost 5173 when hot file is absent', function () {
+    $hotPath = public_path('hot');
+    $hadHot = file_exists($hotPath);
+    if ($hadHot) {
+        @unlink($hotPath);
+    }
+
+    try {
+        $response = $this->withServerVariables([
+            'HTTP_HOST' => '192.168.1.50:8000',
+            'SERVER_NAME' => '192.168.1.50',
+            'SERVER_PORT' => '8000',
+        ])->get('/login');
+
+        $response->assertOk();
+        $content = $response->getContent();
+
+        expect($content)->not->toContain('127.0.0.1:5173')
+            ->not->toContain('localhost:5173')
+            ->toContain('/build/assets/');
+    } finally {
+        if ($hadHot) {
+            file_put_contents($hotPath, "http://127.0.0.1:5173\n");
+        }
+    }
+});

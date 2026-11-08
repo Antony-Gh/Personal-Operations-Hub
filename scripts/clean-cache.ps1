@@ -77,3 +77,4 @@ if ($Optimize) {
 
 Write-Host ""
 Write-Host "[SUCCESS] All caches cleared and maintenance operations finished." -ForegroundColor Green
+

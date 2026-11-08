@@ -77,7 +77,12 @@ npm run build
 
 The central entry point for managing Personal Operations Hub is the **Unified Controller**:
 
+```cmd
+:: Double-click controller.bat (auto-elevates to Administrator)
+controller.bat
+```
 ```powershell
+# Or launch directly via PowerShell:
 powershell -ExecutionPolicy Bypass -File .\controller.ps1
 ```
 *(Interactive menu with 34 operations covering development servers, background daemons, migrations, encrypted backups, mobile LAN access, and health diagnostics).*

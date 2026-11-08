@@ -46,3 +46,4 @@ try {
     Write-Host "[EXCEPTION] $($_.Exception.Message)" -ForegroundColor Red
     exit 1
 }
+

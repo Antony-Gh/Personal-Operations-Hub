@@ -8,14 +8,21 @@ Welcome to the central operational scripts repository for **Personal Operations 
 
 The recommended entry point for managing the entire application is the **Unified Controller** located in the project root:
 
+```cmd
+:: Double-click or run from command prompt (auto-elevates to Administrator):
+controller.bat
+```
+
 ```powershell
-# From the project root:
+# Or run directly via PowerShell:
 powershell -ExecutionPolicy Bypass -File .\controller.ps1
 ```
 
 *(You can also launch it from any directory; it automatically detects and operates relative to the project root).*
 
-### Features of `controller.ps1`:
+### Features of the Unified Controller
+
+- **Automatic Administrator Elevation**: Launching `controller.bat` automatically prompts for UAC elevation and starts an Administrator session so tasks requiring privileges (e.g. Windows Firewall configuration, Task Scheduler installation) execute without access errors.
 - **Categorized interactive terminal dashboard**: 34 operational commands organized across 8 logical categories.
 - **Detailed Operation Cards**: Every operation clearly displays its **Description**, **Prerequisites**, **Impact**, **Estimated Duration**, **Risk Level (Low/Medium/High)**, and **Confirmation Requirements**.
 - **Safety Safeguards**: Confirmation required before destructive actions (database wipe/rollback/restore) with automatic pre-execution snapshots.
@@ -25,10 +32,11 @@ powershell -ExecutionPolicy Bypass -File .\controller.ps1
 
 ## 2. Directory Structure & Script Inventory
 
-All scripts are located in `scripts/`, except the root-level `controller.ps1`:
+All scripts are located in `scripts/`, except the root-level `controller.bat` and `controller.ps1`:
 
 ```text
 Personal-Operations-Hub/
+├── controller.bat                  # Batch launcher with UAC Administrator auto-elevation
 ├── controller.ps1                  # Central interactive terminal manager (root entry point)
 └── scripts/
     ├── start.ps1                   # Interactive launcher (Laravel + Vite + Scheduler + Queue + Browser)
@@ -60,7 +68,7 @@ Personal-Operations-Hub/
 ### Application Startup & Shutdown
 
 | Script | Purpose | Flags / Options | Risk |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | `scripts/start.ps1` | Launches full development environment (HTTP on 8000, Vite compiler on 5173, Scheduler, and Queue worker with browser auto-open). | `-Status`, `-Backup`, `-Logs`, `-NoBrowser` | Low |
 | `scripts/start.bat` | Double-clickable batch launcher for `scripts/start.ps1`. | None | Low |
 | `scripts/stop.ps1` | Safely terminates all tracked application processes (`laravel.pid`, `vite.pid`, `scheduler.pid`, `queue.pid`, `background-pids.json`) and clears runtime state. | None | Low |
@@ -71,7 +79,7 @@ Personal-Operations-Hub/
 ### Windows System Integration & Alarms
 
 | Script | Purpose | Flags / Options | Risk |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | `scripts/install-task-scheduler.ps1` | Registers a Windows scheduled task (`PersonalOperationsHub-Background`) to launch background workers silently at Windows user logon. | `-TaskName <name>`, `-RunNow` | Low |
 | `scripts/uninstall-task-scheduler.ps1` | Unregisters the Windows Task Scheduler startup task and stops background workers. | `-TaskName <name>` | Low |
 | `scripts/tray-companion.ps1` | Starts a native Windows System Tray application displaying real-time task and habit badges with a 1-click Quick Add prompt. | `-Port <int>`, `-BindHost <ip>` | Low |
@@ -80,7 +88,7 @@ Personal-Operations-Hub/
 ### Database, Backups & Maintenance
 
 | Script | Purpose | Flags / Options | Risk |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | `scripts/backup-database.ps1` | Triggers a verified database backup with authenticated AES-256 encryption, PBKDF2 key derivation, and secondary mirror replication. | `-Trigger <manual\|scheduled>` | Low |
 | `scripts/restore-database.ps1` | Interactive database restore utility. Creates a pre-restore safety snapshot (`database.sqlite.pre-restore.<timestamp>.bak`) before restoring. | `-BackupFile <path>`, `-Force` | High |
 | `scripts/clean-cache.ps1` | Clears configuration, route, view, and application cache, and cleans stale orphaned PID files in `.run/`. | `-Optimize`, `-Force` | Low |
@@ -88,7 +96,7 @@ Personal-Operations-Hub/
 ### Diagnostics & Testing
 
 | Script | Purpose | Flags / Options | Risk |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | `scripts/run-diagnostics.ps1` | Comprehensive system audit: verifies PHP 8.2+, Node.js, Composer, npm, `.env`, SQLite `PRAGMA integrity_check`, ports 8000/5173, and filesystem write permissions. | None | Low |
 | `scripts/run-tests.ps1` | Runs Pest / PHPUnit test suite with execution timing and failure summaries. | `-Filter <str>`, `-Detailed` | Low |
 | `scripts/view-logs.ps1` | Inspects recent tail output of `laravel.log` and background worker logs (`scheduler.out.log`, `queue.out.log`, `server.out.log`). | `-Lines <int>`, `-ErrorsOnly` | Low |
@@ -96,7 +104,7 @@ Personal-Operations-Hub/
 ### Mobile LAN & PWA Support
 
 | Script | Purpose | Flags / Options | Risk |
-|---|---|---|:---:|
+| --- | --- | --- | :---: |
 | `scripts/enable-mobile-access.ps1` | Auto-detects local Wi-Fi IPv4, adds a Windows Firewall rule for port 8000, binds the server to `0.0.0.0`, and prints a console QR code. | `-Port <int>`, `-NoRestart` | Low |
 | `scripts/disable-mobile-access.ps1` | Reverts the server to `127.0.0.1` localhost-only and disables the firewall rule. | `-Port <int>`, `-NoRestart` | Low |
 | `scripts/generate-pwa-icons.php` | Synthesizes standard 192x192, 512x512, and maskable PNG icons for mobile PWA compliance using PHP GD. | None | Low |
@@ -106,21 +114,27 @@ Personal-Operations-Hub/
 ## 4. Backup & Restore Procedures
 
 ### Automated Daily Backups
+
 The Laravel Scheduler automatically generates encrypted daily backups during background execution (stored in `storage/app/backups/`).
 
 ### Manual Backup
+
 To create an on-demand verified backup:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\backup-database.ps1
 # Or via controller option 15
 ```
 
 ### Safe Database Restoration
+
 To restore from a backup:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\restore-database.ps1
 # Or via controller option 16
 ```
+
 1. It lists all available backups in `storage/app/backups/`.
 2. It asks for your selection number.
 3. **Safety Guarantee**: Before modifying the active database, it copies `database/database.sqlite` to `database/database.sqlite.pre-restore.<timestamp>.bak`.
@@ -132,23 +146,30 @@ powershell -ExecutionPolicy Bypass -File .\scripts\restore-database.ps1
 ## 5. Troubleshooting & FAQ
 
 ### Port 8000 or 5173 Already Bound
+
 If another process is holding port 8000 or 5173:
+
 ```powershell
 # Run the controller diagnostics:
 powershell -ExecutionPolicy Bypass -File .\scripts\run-diagnostics.ps1
 ```
+
 The diagnostics script identifies the exact process ID and process name bound to the port. If it is an orphaned Personal Operations Hub process, run:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\stop.ps1
 ```
 
 ### Phone Cannot Connect Over Wi-Fi
+
 1. Ensure your phone is connected to the same Wi-Fi network as your PC (not cellular data).
 2. Run `scripts/enable-mobile-access.ps1` from an elevated PowerShell prompt to ensure the Windows Firewall inbound rule for port 8000 was added.
 3. View your scannable QR code: `php artisan ops:mobile`.
 
 ### Clearing Caches After Code Updates
+
 If frontend or backend changes aren't appearing:
+
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\scripts\clean-cache.ps1 -Optimize
 npm run build
@@ -160,12 +181,15 @@ npm run build
 
 1. **Create the Script**:
    Place your new PowerShell script inside `scripts/my-script.ps1`. Always resolve the project root using:
+
    ```powershell
    $ProjectRoot = Split-Path -Parent $PSScriptRoot
    Set-Location $ProjectRoot
    ```
+
 2. **Register in `controller.ps1`**:
    Open `controller.ps1` and append a new operation to `$Operations`:
+
    ```powershell
    [PSCustomObject]@{
        Id                   = 35
@@ -183,4 +207,5 @@ npm run build
        }
    }
    ```
+
 3. **Document in `scripts/README.md`**: Add an entry under the appropriate category table above.

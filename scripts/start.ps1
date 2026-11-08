@@ -288,3 +288,4 @@ if (-not $NoBrowser) {
 Write-Host "Services (HTTP, Vite, Scheduler, Queue) are running with tracked PIDs in .run\" -ForegroundColor Gray
 Write-Host "Helper flags: .\scripts\start.ps1 -Status | .\scripts\start.ps1 -Backup | .\scripts\start.ps1 -Logs" -ForegroundColor Gray
 Write-Host "To cleanly stop services, run .\scripts\stop.ps1 or .\scripts\stop.bat" -ForegroundColor Gray
+

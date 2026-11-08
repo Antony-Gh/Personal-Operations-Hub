@@ -93,3 +93,4 @@ if ($stoppedPids -gt 0) {
 } else {
     Write-Host "[OK] No active tracked processes were running. Stale state cleared." -ForegroundColor Green
 }
+

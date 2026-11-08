@@ -43,3 +43,4 @@ if (Test-Path $bgLogDir) {
 } else {
     Write-Host "No storage\logs\background\ folder found." -ForegroundColor Gray
 }
+

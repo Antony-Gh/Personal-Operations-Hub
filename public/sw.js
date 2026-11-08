@@ -5,6 +5,9 @@ const PRECACHE_ASSETS = [
     '/favicon-32x32.png',
     '/favicon-16x16.png',
     '/apple-touch-icon.png',
+    '/icon-192.png',
+    '/icon-512.png',
+    '/icon-maskable-512.png',
     '/site.webmanifest',
 ];
 

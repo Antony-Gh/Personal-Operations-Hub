@@ -27,7 +27,9 @@ import {
     Check,
     Trash2,
     RefreshCw,
+    Smartphone,
 } from 'lucide-vue-next';
+import MobileConnectModal from '@/Components/MobileConnectModal.vue';
 
 const props = defineProps<{
     setting: UserSetting;
@@ -181,6 +183,7 @@ const sendTestWindowsToast = () => {
 
 // Calendar feed controls
 const copiedFeed = ref(false);
+const isMobileModalOpen = ref(false);
 const copyCalendarFeed = async () => {
     if (!props.calendarFeedUrl) return;
     try {
@@ -242,6 +245,14 @@ const submitSettings = () => {
                 </div>
 
                 <div class="flex items-center gap-2">
+                    <button
+                        type="button"
+                        @click="isMobileModalOpen = true"
+                        class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-xs font-medium border border-indigo-200 dark:border-indigo-800 transition"
+                    >
+                        <Smartphone class="w-4 h-4" />
+                        <span>Mobile Phone</span>
+                    </button>
                     <Link
                         :href="route('settings.data')"
                         class="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs font-medium transition"
@@ -877,5 +888,7 @@ const submitSettings = () => {
                 </div>
             </form>
         </div>
+
+        <MobileConnectModal :is-open="isMobileModalOpen" @close="isMobileModalOpen = false" />
     </AuthenticatedLayout>
 </template>

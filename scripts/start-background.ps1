@@ -14,6 +14,19 @@ Set-Location $ProjectRoot
 $RunDir = Join-Path $ProjectRoot ".run"
 $LogDir = Join-Path $ProjectRoot "storage\logs\background"
 $PidJsonPath = Join-Path $RunDir "background-pids.json"
+$bindConfigFile = Join-Path $RunDir "bind-host.txt"
+
+# If BindHost was not explicitly specified via command line, check persistent config
+if (-not $PSBoundParameters.ContainsKey('BindHost')) {
+    if (Test-Path $bindConfigFile) {
+        $savedHost = (Get-Content $bindConfigFile -ErrorAction SilentlyContinue | Out-String).Trim()
+        if ($savedHost) {
+            $BindHost = $savedHost
+        }
+    } elseif ($env:POH_BIND_HOST) {
+        $BindHost = $env:POH_BIND_HOST
+    }
+}
 
 if (-not (Test-Path $RunDir)) {
     New-Item -ItemType Directory -Path $RunDir -Force | Out-Null

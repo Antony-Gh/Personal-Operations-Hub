@@ -12,6 +12,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DataExportImportController;
 use App\Http\Controllers\FocusSessionController;
 use App\Http\Controllers\HabitController;
+use App\Http\Controllers\MobileAccessController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\PhoneUsageController;
 use App\Http\Controllers\ProfileController;
@@ -163,6 +164,10 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::post('/settings/backups/restore', [DataExportImportController::class, 'restoreManagedBackup'])->name('settings.backups.restore');
     Route::post('/settings/import/preview', [DataExportImportController::class, 'previewImport'])->name('settings.import.preview');
     Route::post('/settings/import/process', [DataExportImportController::class, 'processImport'])->name('settings.import.process');
+
+    // 14. Mobile Access & Local LAN Configuration
+    Route::get('/mobile/status', [MobileAccessController::class, 'status'])->name('mobile.status');
+    Route::post('/mobile/enable', [MobileAccessController::class, 'enable'])->name('mobile.enable');
 
     // Standard profile
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

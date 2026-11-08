@@ -7,6 +7,7 @@ import QuickAddModal from '@/Components/QuickAddModal.vue';
 import NotificationCenter from '@/Components/NotificationCenter.vue';
 import MiniFocusTimer from '@/Components/MiniFocusTimer.vue';
 import CommandPalette from '@/Components/CommandPalette.vue';
+import MobileConnectModal from '@/Components/MobileConnectModal.vue';
 import {
     LayoutDashboard,
     Sun,
@@ -30,6 +31,7 @@ import {
     Layers,
     CheckCircle2,
     AlertCircle,
+    Smartphone,
 } from 'lucide-vue-next';
 import { useTheme, ThemePreference } from '@/composables/useTheme';
 
@@ -42,6 +44,7 @@ const isSidebarCollapsed = ref(false);
 const isMobileDrawerOpen = ref(false);
 const isUserMenuOpen = ref(false);
 const isQuickAddOpen = ref(false);
+const isMobileModalOpen = ref(false);
 const quickAddTab = ref<'task' | 'project' | 'category' | 'phone'>('task');
 
 const { isDark, toggleTheme, initTheme } = useTheme();
@@ -282,6 +285,15 @@ const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') =
                         <!-- Notification Bell & Drawer -->
                         <NotificationCenter />
 
+                        <!-- Mobile Connect (QR Code) Button -->
+                        <button
+                            @click="isMobileModalOpen = true"
+                            class="p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                            title="Connect Mobile Phone (QR Code)"
+                        >
+                            <Smartphone class="w-4 h-4" />
+                        </button>
+
                         <!-- Theme Toggle Button -->
                         <button
                             @click="toggleTheme"
@@ -364,5 +376,8 @@ const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') =
 
         <!-- Global Quick Add Modal -->
         <QuickAddModal :show="isQuickAddOpen" :initial-tab="quickAddTab" @close="isQuickAddOpen = false" />
+
+        <!-- Mobile Phone Connect Modal -->
+        <MobileConnectModal :is-open="isMobileModalOpen" @close="isMobileModalOpen = false" />
     </div>
 </template>

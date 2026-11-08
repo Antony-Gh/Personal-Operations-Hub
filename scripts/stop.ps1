@@ -1,14 +1,15 @@
 # Personal Operations Hub - Safe Service Stopper (PowerShell 5.1 Compatible)
 $ErrorActionPreference = "Stop"
 
-Set-Location $PSScriptRoot
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $ProjectRoot
 
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host "    Personal Operations Hub - Stop Services" -ForegroundColor Cyan
 Write-Host "===================================================" -ForegroundColor Cyan
 Write-Host ""
 
-$runDir = Join-Path $PSScriptRoot ".run"
+$runDir = Join-Path $ProjectRoot ".run"
 $stoppedPids = 0
 $seenPids = @{}
 
@@ -58,52 +59,37 @@ $pidSpecs = @(
     @{ File = "laravel.pid"; Label = "Laravel backend"; Pattern = '^(php|php-cgi|cmd)$' },
     @{ File = "scheduler.pid"; Label = "Laravel Scheduler"; Pattern = '^(php|php-cgi|cmd)$' },
     @{ File = "queue.pid"; Label = "Database Queue Worker"; Pattern = '^(php|php-cgi|cmd)$' },
-    @{ File = "vite.pid"; Label = "Vite compiler"; Pattern = '^(node|cmd|npm)$' }
+    @{ File = "vite.pid"; Label = "Vite frontend compiler"; Pattern = '^(node|cmd|npm)$' }
 )
 
 foreach ($spec in $pidSpecs) {
-    $pidFile = Join-Path $runDir $spec.File
-    if (Test-Path $pidFile) {
-        $pidRaw = (Get-Content $pidFile -ErrorAction SilentlyContinue | Out-String).Trim()
-        if ($pidRaw -match '^\d+$') {
-            $stoppedPids += Stop-VerifiedProcess -PidNumber ([int]$pidRaw) -Label $spec.Label -AllowedPattern $spec.Pattern
+    $fPath = Join-Path $runDir $spec.File
+    if (Test-Path $fPath) {
+        $raw = (Get-Content $fPath -ErrorAction SilentlyContinue | Out-String).Trim()
+        if ($raw -match '^\d+$') {
+            $stoppedPids += Stop-VerifiedProcess -PidNumber ([int]$raw) -Label $spec.Label -AllowedPattern $spec.Pattern
         }
-        Remove-Item $pidFile -Force -ErrorAction SilentlyContinue
+        Remove-Item $fPath -Force -ErrorAction SilentlyContinue
     }
 }
 
-if ($stoppedPids -gt 0) {
-    Write-Host "Tracked services terminated cleanly ($stoppedPids process tree(s))." -ForegroundColor Green
-} else {
-    Write-Host "No active tracked services were found in .run\" -ForegroundColor Yellow
-    Write-Host "Checking if orphaned PHP (port 8000) or Node (port 5173) are listening..." -ForegroundColor Gray
-
-    $portMap = @{ 8000 = 'php'; 5173 = 'node' }
-    foreach ($entry in $portMap.GetEnumerator()) {
-        $port = $entry.Key
-        $expectedProcess = $entry.Value
-        $conns = Get-NetTCPConnection -LocalPort $port -State Listen -ErrorAction SilentlyContinue
-        if ($conns) {
-            foreach ($conn in $conns) {
-                $p = $conn.OwningProcess
-                $proc = Get-Process -Id $p -ErrorAction SilentlyContinue
-                if ($proc -and ($proc.ProcessName -match "^$expectedProcess")) {
-                    Write-Host "Terminating orphaned $expectedProcess on port $port (PID: $p)..." -ForegroundColor Yellow
-                    cmd.exe /c "taskkill /F /T /PID $p >nul 2>&1"
-                } elseif ($proc) {
-                    Write-Host "Port $port is used by '$($proc.ProcessName)' (PID: $p) - skipping to protect unrelated software." -ForegroundColor Yellow
-                }
-            }
-        }
-    }
+# 3. Clean up Vite hot reload flag file so Laravel defaults to built assets on next run
+$hotFile = Join-Path $ProjectRoot "public\hot"
+if (Test-Path $hotFile) {
+    Remove-Item $hotFile -Force -ErrorAction SilentlyContinue
 }
 
-# Clean empty .run dir if empty
+# 4. Remove empty .run folder if no files remain
 if (Test-Path $runDir) {
-    $remaining = Get-ChildItem $runDir -ErrorAction SilentlyContinue
-    if (-not $remaining) {
-        Remove-Item $runDir -Force -ErrorAction SilentlyContinue
+    $remaining = Get-ChildItem -Path $runDir -Force -ErrorAction SilentlyContinue
+    if (-not $remaining -or $remaining.Count -eq 0) {
+        Remove-Item $runDir -Force -Recurse -ErrorAction SilentlyContinue
     }
 }
 
-Write-Host "Shutdown procedure complete." -ForegroundColor Green
+Write-Host ""
+if ($stoppedPids -gt 0) {
+    Write-Host "[OK] Stopped $stoppedPids tracked process(es). Working directory clean." -ForegroundColor Green
+} else {
+    Write-Host "[OK] No active tracked processes were running. Stale state cleared." -ForegroundColor Green
+}

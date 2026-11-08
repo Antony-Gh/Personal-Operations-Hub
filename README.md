@@ -73,18 +73,25 @@ php artisan migrate --force
 npm run build
 ```
 
-### 2. Launch Interactive Mode (HTTP + Vite + Scheduler + Queue)
+### 2. Launching Operations via the Unified Controller
+
+The central entry point for managing Personal Operations Hub is the **Unified Controller**:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start.ps1
+powershell -ExecutionPolicy Bypass -File .\controller.ps1
 ```
-*(Or double-click `start.bat`. Stop cleanly anytime with `.\stop.ps1` or `stop.bat`.)*
+*(Interactive menu with 34 operations covering development servers, background daemons, migrations, encrypted backups, mobile LAN access, and health diagnostics).*
 
-Useful launcher flags:
+Or run individual scripts directly:
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -Status
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -Backup
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -Logs
+# Interactive development mode (HTTP + Vite + Scheduler + Queue + Browser)
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
+
+# Service status check
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Status
+
+# Stop all services safely
+powershell -ExecutionPolicy Bypass -File .\scripts\stop.ps1
 ```
 
 ### 3. Headless Windows Background Mode & Auto-Start at Login

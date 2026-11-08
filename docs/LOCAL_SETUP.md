@@ -53,43 +53,49 @@ npm run build
 
 ---
 
-## 3. Interactive Daily Launch (`start.bat` / `start.ps1`)
+## 3. Operations Management (`controller.ps1` or `scripts/start.ps1`)
 
-For interactive use with live frontend hot-reloading plus background alarms, reminders, and queue processing:
+For unified management of all operations, run the central controller:
 
-### Option A — Double-Click Batch Launcher
-Double-click `start.bat` in Windows Explorer, or run:
-
-```cmd
-start.bat
+```powershell
+powershell -ExecutionPolicy Bypass -File .\controller.ps1
 ```
 
-### Option B — PowerShell Launcher (with Helper Flags)
+For direct interactive daily launch with live frontend hot-reloading plus background alarms, reminders, and queue processing:
+
+### Option A — PowerShell Launcher (with Helper Flags)
 
 ```powershell
 # Launch HTTP server, Vite, Scheduler, Queue worker, and open browser
-powershell -ExecutionPolicy Bypass -File .\start.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 
 # Launch without opening a new browser tab
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -NoBrowser
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -NoBrowser
 
 # Check live running status of all local workers
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -Status
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Status
 
 # Trigger an immediate verified SQLite backup from the terminal
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -Backup
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Backup
 
 # Tail recent application and background worker logs
-powershell -ExecutionPolicy Bypass -File .\start.ps1 -Logs
+powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Logs
+```
+
+### Option B — Batch Launcher
+Double-click `scripts\start.bat` in Windows Explorer, or run:
+
+```cmd
+scripts\start.bat
 ```
 
 ### Clean Shutdown
 Stop all tracked processes started by Personal Operations Hub (without affecting unrelated PHP or Node processes on your PC):
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\stop.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\stop.ps1
 ```
-*(Or double-click `stop.bat`.)*
+*(Or double-click `scripts\stop.bat`.)*
 
 ---
 

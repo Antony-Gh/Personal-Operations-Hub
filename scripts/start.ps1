@@ -5,16 +5,17 @@ param(
     [switch]$NoBrowser
 )
 
-# Personal Operations Hub - PowerShell Launcher (PowerShell 5.1 Compatible)
+# Personal Operations Hub - Interactive Development Launcher (PowerShell 5.1 Compatible)
 $ErrorActionPreference = "Stop"
 
-Set-Location $PSScriptRoot
+$ProjectRoot = Split-Path -Parent $PSScriptRoot
+Set-Location $ProjectRoot
 
-$runDir = Join-Path $PSScriptRoot ".run"
-$bgLogDir = Join-Path $PSScriptRoot "storage\logs\background"
+$runDir = Join-Path $ProjectRoot ".run"
+$bgLogDir = Join-Path $ProjectRoot "storage\logs\background"
 
 if ($Status) {
-    $bgScript = Join-Path $PSScriptRoot "scripts\start-background.ps1"
+    $bgScript = Join-Path $PSScriptRoot "start-background.ps1"
     if (Test-Path $bgScript) {
         & powershell -NoProfile -ExecutionPolicy Bypass -File $bgScript -Status
     }
@@ -46,7 +47,7 @@ if ($Logs) {
     Write-Host "===================================================" -ForegroundColor Cyan
     Write-Host "    Personal Operations Hub - Recent Logs" -ForegroundColor Cyan
     Write-Host "===================================================" -ForegroundColor Cyan
-    $laravelLog = Join-Path $PSScriptRoot "storage\logs\laravel.log"
+    $laravelLog = Join-Path $ProjectRoot "storage\logs\laravel.log"
     if (Test-Path $laravelLog) {
         Write-Host "`n--- storage\logs\laravel.log (last 25 lines) ---" -ForegroundColor Yellow
         Get-Content $laravelLog -Tail 25
@@ -151,7 +152,7 @@ if ($port8000InUse) {
     Write-Host "      Port 8000 already has a service listening." -ForegroundColor Yellow
 } else {
     Write-Host "      Starting Laravel backend (port 8000)..." -ForegroundColor Cyan
-    $laravelProc = Start-Process -FilePath $phpExe -ArgumentList "artisan serve --host=127.0.0.1 --port=8000 --no-interaction" -WorkingDirectory $PSScriptRoot -PassThru
+    $laravelProc = Start-Process -FilePath $phpExe -ArgumentList "artisan serve --host=127.0.0.1 --port=8000 --no-interaction" -WorkingDirectory $ProjectRoot -PassThru
     $laravelProc.Id | Out-File -FilePath "$runDir\laravel.pid" -Encoding ascii
     Write-Host "      Laravel started (PID: $($laravelProc.Id))." -ForegroundColor Green
 }
@@ -167,7 +168,7 @@ if ($port5173InUse) {
     if ($foundNpm) {
         $npmCmd = $foundNpm.Source
     }
-    $viteProc = Start-Process -FilePath $npmCmd -ArgumentList "run dev" -WorkingDirectory $PSScriptRoot -PassThru
+    $viteProc = Start-Process -FilePath $npmCmd -ArgumentList "run dev" -WorkingDirectory $ProjectRoot -PassThru
     $viteProc.Id | Out-File -FilePath "$runDir\vite.pid" -Encoding ascii
     Write-Host "      Vite started (PID: $($viteProc.Id))." -ForegroundColor Green
 }
@@ -190,7 +191,7 @@ if (-not $schedRunning) {
     $schErr = Join-Path $bgLogDir "scheduler.err.log"
     $schedProc = Start-Process -FilePath $phpExe `
         -ArgumentList "artisan schedule:work --no-interaction" `
-        -WorkingDirectory $PSScriptRoot `
+        -WorkingDirectory $ProjectRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $schOut `
         -RedirectStandardError $schErr `
@@ -217,7 +218,7 @@ if (-not $queueRunning) {
     $qErr = Join-Path $bgLogDir "queue.err.log"
     $queueProc = Start-Process -FilePath $phpExe `
         -ArgumentList "artisan queue:work --sleep=3 --tries=3 --timeout=60 --no-interaction" `
-        -WorkingDirectory $PSScriptRoot `
+        -WorkingDirectory $ProjectRoot `
         -WindowStyle Hidden `
         -RedirectStandardOutput $qOut `
         -RedirectStandardError $qErr `
@@ -285,5 +286,5 @@ if (-not $NoBrowser) {
 }
 
 Write-Host "Services (HTTP, Vite, Scheduler, Queue) are running with tracked PIDs in .run\" -ForegroundColor Gray
-Write-Host "Helper flags: .\start.ps1 -Status | .\start.ps1 -Backup | .\start.ps1 -Logs" -ForegroundColor Gray
-Write-Host "To cleanly stop services, run .\stop.ps1 or stop.bat" -ForegroundColor Gray
+Write-Host "Helper flags: .\scripts\start.ps1 -Status | .\scripts\start.ps1 -Backup | .\scripts\start.ps1 -Logs" -ForegroundColor Gray
+Write-Host "To cleanly stop services, run .\scripts\stop.ps1 or .\scripts\stop.bat" -ForegroundColor Gray

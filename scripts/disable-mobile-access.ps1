@@ -53,3 +53,4 @@ if (-not $NoRestart) {
 
 Write-Host ""
 Write-Host "  Localhost isolation restored. The application is only accessible from this computer." -ForegroundColor Green
+

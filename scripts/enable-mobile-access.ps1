@@ -95,3 +95,4 @@ try {
 } catch {
     Write-Host "  Mobile configuration complete! Run 'php artisan ops:mobile' to view your QR code." -ForegroundColor Green
 }
+

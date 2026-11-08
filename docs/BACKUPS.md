@@ -64,9 +64,9 @@ php artisan ops:backup-database --trigger=manual
 ### Option B — Manual Offline File Restore (If the App Cannot Start)
 1. Stop all local workers:
    ```powershell
-   powershell -ExecutionPolicy Bypass -File .\stop.ps1
+   powershell -ExecutionPolicy Bypass -File .\scripts\stop.ps1
    ```
-2. Copy your chosen `.sqlite` snapshot from `storage\app\backups\` over `database\database.sqlite`:
+2. Copy your chosen `.sqlite` snapshot from `storage\app\backups\` over `database\database.sqlite` (or run `.\scripts\restore-database.ps1` or option 16 in `.\controller.ps1`):
    ```powershell
    Copy-Item "storage\app\backups\ops-hub-backup-YYYY-MM-DD-HHMMSS-manual-xxxx.sqlite" "database\database.sqlite" -Force
    ```
@@ -74,5 +74,5 @@ php artisan ops:backup-database --trigger=manual
    ```powershell
    php artisan migrate --force
    ```
-4. Start the hub again (`.\start.ps1` or `.\scripts\start-background.ps1`).
+4. Start the hub again (`.\controller.ps1`, `.\scripts\start.ps1`, or `.\scripts\start-background.ps1`).
 

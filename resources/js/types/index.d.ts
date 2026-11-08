@@ -33,6 +33,7 @@ export interface UserSetting {
     allow_critical_in_quiet_hours: boolean;
     notifications_enabled: boolean;
     browser_notifications_enabled: boolean;
+    windows_toast_enabled?: boolean;
     notification_sound_enabled: boolean;
     notification_sound: NotificationSoundPreset;
     notification_volume: number;
@@ -40,6 +41,9 @@ export interface UserSetting {
     daily_briefing_enabled: boolean;
     daily_briefing_time: string;
     last_daily_briefing_at?: string | null;
+    evening_checkin_nudge_enabled?: boolean;
+    evening_checkin_nudge_time?: string;
+    last_evening_nudge_at?: string | null;
     weekly_digest_enabled: boolean;
     weekly_digest_day: number;
     weekly_digest_time: string;
@@ -48,6 +52,10 @@ export interface UserSetting {
     project_reminder_days: number[];
     backup_enabled: boolean;
     backup_retention_days: number;
+    secondary_backup_enabled?: boolean;
+    secondary_backup_path?: string | null;
+    backup_encryption_enabled?: boolean;
+    has_backup_encryption_password?: boolean;
     focus_work_minutes: number;
     focus_short_break_minutes: number;
     focus_long_break_minutes: number;
@@ -130,9 +138,17 @@ export interface Task {
     project?: Project | null;
     tags?: Tag[];
     checklists?: TaskChecklist[];
+    blocked_by_tasks?: {
+        id: number;
+        title: string;
+        status: Task['status'];
+        priority: Task['priority'];
+    }[];
     is_priority?: boolean;
     plan_task_id?: number;
     plan_sort_order?: number;
+    scheduled_start_time?: string | null;
+    scheduled_end_time?: string | null;
 }
 
 export interface ProjectMilestone {
@@ -177,6 +193,8 @@ export interface CalendarEvent {
     description?: string | null;
     start_time?: string;
     end_time?: string;
+    local_start_hm?: string | null;
+    local_end_hm?: string | null;
     date?: string | null;
     due_time?: string | null;
     all_day?: boolean;
@@ -228,6 +246,17 @@ export interface BadHabit {
     category: string;
     trigger_cue: string | null;
     replacement_action: string | null;
+    linked_habit_id?: number | null;
+    linked_habit?: {
+        id: number;
+        name: string;
+        category: string;
+        today_status: string;
+    } | null;
+    minutes_saved_per_day?: number;
+    money_saved_per_day?: number;
+    minutes_reclaimed?: number;
+    money_reclaimed?: number;
     has_daily_limit: boolean;
     daily_limit_value: number | null;
     daily_limit_unit: 'times' | 'minutes';
@@ -361,6 +390,8 @@ export interface BackupEntry {
     integrity_status: string;
     trigger: string;
     tables_count: number | null;
+    mirrored_to?: string | null;
+    encrypted_mirror?: boolean;
 }
 
 export type PageProps<

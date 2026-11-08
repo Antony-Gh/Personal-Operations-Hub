@@ -16,6 +16,7 @@ import {
     HeartHandshake,
     Sparkles,
     ShieldAlert,
+    BarChart3,
     Settings,
     FileText,
     ChevronLeft,
@@ -54,6 +55,7 @@ const navItems = [
     { name: 'Calendar', route: 'calendar.index', icon: Calendar },
     { name: 'Habits', route: 'habits.index', icon: Sparkles },
     { name: 'Bad Habits', route: 'bad-habits.index', icon: ShieldAlert },
+    { name: 'Analytics', route: 'analytics.index', icon: BarChart3 },
     { name: 'Weekly Review', route: 'weekly-review.index', icon: HeartHandshake },
     { name: 'Settings', route: 'settings.index', icon: Settings },
 ];

@@ -146,6 +146,9 @@ class BadHabitAnalyticsService
             ->values()
             ->all();
 
+        $minutesPerDay = max(0, (int) ($badHabit->minutes_saved_per_day ?? 0));
+        $moneyPerDay = max(0.0, (float) ($badHabit->money_saved_per_day ?? 0.0));
+
         return [
             'current_clean_streak' => $currentCleanStreak,
             'best_clean_streak' => $bestCleanStreak,
@@ -156,7 +159,118 @@ class BadHabitAnalyticsService
             'weekly_clean_rate' => $weeklyCleanRate,
             'monthly_clean_rate' => $monthlyCleanRate,
             'overall_clean_percentage' => $overallCleanPercentage,
+            'minutes_reclaimed' => $totalCleanDays * $minutesPerDay,
+            'money_reclaimed' => round($totalCleanDays * $moneyPerDay, 2),
             'recent_reflections' => $recentReflections,
+        ];
+    }
+
+    /**
+     * Aggregate recurring slip triggers and day-of-week slip distributions across active bad habits.
+     *
+     * @return array<string, mixed>
+     */
+    public function buildTriggerAnalytics(User $user): array
+    {
+        $tz = UserDateTime::resolveTimezone($user);
+        $activeIds = BadHabit::where('user_id', $user->id)->active()->pluck('id');
+
+        $slipCheckIns = BadHabitCheckIn::where('user_id', $user->id)
+            ->whereIn('bad_habit_id', $activeIds)
+            ->whereIn('status', ['minor_slip', 'slipped'])
+            ->get();
+
+        $totalSlips = $slipCheckIns->count();
+        $triggerCounts = [];
+        $dowCounts = [
+            1 => 0, // Mon
+            2 => 0, // Tue
+            3 => 0, // Wed
+            4 => 0, // Thu
+            5 => 0, // Fri
+            6 => 0, // Sat
+            0 => 0, // Sun
+        ];
+        $dowLabels = [
+            1 => 'Mon',
+            2 => 'Tue',
+            3 => 'Wed',
+            4 => 'Thu',
+            5 => 'Fri',
+            6 => 'Sat',
+            0 => 'Sun',
+        ];
+
+        foreach ($slipCheckIns as $ci) {
+            $d = Carbon::parse($ci->date, $tz);
+            $dow = (int) $d->dayOfWeek;
+            $dowCounts[$dow] = ($dowCounts[$dow] ?? 0) + 1;
+
+            $note = trim((string) ($ci->trigger_note ?? ''));
+            if ($note !== '') {
+                $normKey = mb_strtolower($note);
+                if (! isset($triggerCounts[$normKey])) {
+                    $triggerCounts[$normKey] = [
+                        'label' => $note,
+                        'count' => 0,
+                    ];
+                }
+                $triggerCounts[$normKey]['count']++;
+            }
+        }
+
+        $topTriggers = collect(array_values($triggerCounts))
+            ->sortByDesc('count')
+            ->take(5)
+            ->values()
+            ->map(fn (array $item): array => [
+                'trigger' => $item['label'],
+                'count' => $item['count'],
+                'share_percent' => $totalSlips > 0 ? (int) round(($item['count'] / $totalSlips) * 100) : 0,
+            ])
+            ->all();
+
+        $dayOfWeekSlips = [];
+        $peakDow = null;
+        $peakCount = 0;
+
+        foreach ([1, 2, 3, 4, 5, 6, 0] as $dowKey) {
+            $cnt = $dowCounts[$dowKey];
+            $share = $totalSlips > 0 ? (int) round(($cnt / $totalSlips) * 100) : 0;
+            $dayOfWeekSlips[] = [
+                'day' => $dowLabels[$dowKey],
+                'count' => $cnt,
+                'share_percent' => $share,
+            ];
+            if ($cnt > $peakCount) {
+                $peakCount = $cnt;
+                $peakDow = [
+                    'day' => $dowLabels[$dowKey],
+                    'count' => $cnt,
+                    'share_percent' => $share,
+                ];
+            }
+        }
+
+        $headlineInsight = 'No slips logged yet — keep building clean-day momentum!';
+        if ($totalSlips > 0) {
+            $parts = [];
+            if ($peakDow !== null) {
+                $parts[] = "{$peakDow['share_percent']}% of slips occur on {$peakDow['day']}";
+            }
+            if (! empty($topTriggers)) {
+                $topT = $topTriggers[0];
+                $parts[] = "top trigger: \"{$topT['trigger']}\" ({$topT['share_percent']}%)";
+            }
+            $headlineInsight = ucfirst(implode(' — ', $parts)).'.';
+        }
+
+        return [
+            'total_logged_slips' => $totalSlips,
+            'top_triggers' => $topTriggers,
+            'day_of_week_slips' => $dayOfWeekSlips,
+            'peak_day' => $peakDow,
+            'headline_insight' => $headlineInsight,
         ];
     }
 
@@ -375,4 +489,3 @@ class BadHabitAnalyticsService
         return [$runningStreak, $bestStreak];
     }
 }
-

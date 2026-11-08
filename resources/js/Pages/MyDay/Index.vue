@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { CalendarEvent, DailyPlan, PageProps, PhoneUsageLog, Task } from '@/types';
@@ -18,6 +18,8 @@ import {
     ArrowDown,
     ListTodo,
     Timer,
+    AlertTriangle,
+    X,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -28,6 +30,15 @@ const props = defineProps<{
     unplannedDueTasks: Task[];
     candidateTasks: Task[];
     fixedCommitments: CalendarEvent[];
+    capacity?: {
+        workday_minutes: number;
+        committed_event_minutes: number;
+        available_free_minutes: number;
+        planned_task_minutes: number;
+        is_overbooked: boolean;
+        overbooked_by_minutes: number;
+        utilization_percent: number;
+    };
     phoneUsage: PhoneUsageLog | null;
     targetPhoneMinutes: number;
 }>();
@@ -130,6 +141,89 @@ const submitReschedule = (task: Task) => {
         }
     );
 };
+
+// Visual Time-Blocking (06:00 - 23:00)
+const timelineHours = Array.from({ length: 18 }, (_, i) => {
+    const h = i + 6;
+    return `${String(h).padStart(2, '0')}:00`;
+});
+
+const draggingPlanTaskId = ref<number | null>(null);
+const dragOverHour = ref<string | null>(null);
+
+const onPlanTaskDragStart = (e: DragEvent, task: Task) => {
+    draggingPlanTaskId.value = task.id;
+    if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', String(task.id));
+    }
+};
+
+const onPlanTaskDragEnd = () => {
+    draggingPlanTaskId.value = null;
+    dragOverHour.value = null;
+};
+
+const saveTimeBlock = (task: Task, startTime: string | null, endTime: string | null = null) => {
+    router.patch(
+        route('my-day.time-block', [props.dailyPlan.id, task.id]),
+        {
+            scheduled_start_time: startTime,
+            scheduled_end_time: endTime,
+        },
+        { preserveScroll: true }
+    );
+};
+
+const onDropHour = (hourHm: string) => {
+    const tId = draggingPlanTaskId.value;
+    draggingPlanTaskId.value = null;
+    dragOverHour.value = null;
+    if (!tId) {
+        return;
+    }
+    const task = props.plannedTasks.find((t) => t.id === tId);
+    if (!task) {
+        return;
+    }
+    saveTimeBlock(task, hourHm, null);
+};
+
+const timelineByHour = computed(() => {
+    const map: Record<
+        string,
+        {
+            events: CalendarEvent[];
+            tasks: Task[];
+        }
+    > = {};
+    for (const hm of timelineHours) {
+        map[hm] = { events: [], tasks: [] };
+    }
+
+    for (const evt of props.fixedCommitments) {
+        const startHm = evt.local_start_hm || (evt.start_time ? new Date(evt.start_time).toTimeString().slice(0, 5) : null);
+        if (!startHm) {
+            continue;
+        }
+        const bucket = `${startHm.slice(0, 2)}:00`;
+        if (map[bucket]) {
+            map[bucket].events.push(evt);
+        }
+    }
+
+    for (const t of props.plannedTasks) {
+        if (!t.scheduled_start_time) {
+            continue;
+        }
+        const bucket = `${t.scheduled_start_time.slice(0, 2)}:00`;
+        if (map[bucket]) {
+            map[bucket].tasks.push(t);
+        }
+    }
+
+    return map;
+});
 </script>
 
 <template>
@@ -187,6 +281,51 @@ const submitReschedule = (task: Task) => {
                 </div>
             </div>
 
+            <!-- Capacity Meter & Overbooking Warning -->
+            <div
+                v-if="capacity"
+                class="rounded-2xl border p-4 shadow-xs space-y-2.5"
+                :class="
+                    capacity.is_overbooked
+                        ? 'bg-rose-50/70 dark:bg-rose-950/30 border-rose-300 dark:border-rose-900'
+                        : 'bg-white dark:bg-neutral-900 border-neutral-200 dark:border-neutral-800'
+                "
+            >
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                    <div class="flex items-center gap-2">
+                        <AlertTriangle v-if="capacity.is_overbooked" class="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                        <Clock v-else class="w-4 h-4 text-indigo-500 shrink-0" />
+                        <span
+                            class="font-semibold"
+                            :class="capacity.is_overbooked ? 'text-rose-800 dark:text-rose-200' : 'text-neutral-900 dark:text-white'"
+                        >
+                            <template v-if="capacity.is_overbooked">
+                                Overbooked by {{ capacity.overbooked_by_minutes }}m ({{ Math.round((capacity.overbooked_by_minutes / 60) * 10) / 10 }}h) — consider rescheduling or using your Fallback Plan
+                            </template>
+                            <template v-else>
+                                Realistic Daily Capacity: {{ capacity.planned_task_minutes }}m planned of {{ capacity.available_free_minutes }}m free focus capacity ({{ capacity.utilization_percent }}%)
+                            </template>
+                        </span>
+                    </div>
+                    <div class="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
+                        Fixed events: {{ capacity.committed_event_minutes }}m • Remaining: {{ Math.max(0, capacity.available_free_minutes - capacity.planned_task_minutes) }}m
+                    </div>
+                </div>
+                <div class="w-full h-2 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
+                    <div
+                        class="h-full rounded-full transition-all"
+                        :class="
+                            capacity.is_overbooked
+                                ? 'bg-rose-500'
+                                : capacity.utilization_percent >= 85
+                                  ? 'bg-amber-500'
+                                  : 'bg-emerald-500'
+                        "
+                        :style="{ width: `${Math.min(100, capacity.utilization_percent)}%` }"
+                    ></div>
+                </div>
+            </div>
+
             <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <!-- Left 2 Cols: Planned Tasks & Top Priorities -->
                 <div class="lg:col-span-2 space-y-6">
@@ -214,7 +353,10 @@ const submitReschedule = (task: Task) => {
                             <div
                                 v-for="(task, idx) in plannedTasks"
                                 :key="'plan-' + task.id"
-                                class="flex items-start gap-3 p-3 rounded-xl border transition"
+                                draggable="true"
+                                @dragstart="onPlanTaskDragStart($event, task)"
+                                @dragend="onPlanTaskDragEnd"
+                                class="flex items-start gap-3 p-3 rounded-xl border transition cursor-grab active:cursor-grabbing"
                                 :class="
                                     task.is_priority
                                         ? 'border-amber-300 dark:border-amber-700/60 bg-amber-50/20 dark:bg-amber-950/10'
@@ -262,6 +404,34 @@ const submitReschedule = (task: Task) => {
                                         <span v-if="task.estimated_duration || task.actual_duration" class="text-neutral-400">
                                             &bull; <template v-if="task.actual_duration">{{ task.actual_duration }}/</template>{{ task.estimated_duration || 0 }}m
                                         </span>
+                                    </div>
+
+                                    <!-- Inline Time-Block Assignment -->
+                                    <div class="flex items-center gap-1.5 mt-2 flex-wrap">
+                                        <span class="text-[10px] font-medium text-neutral-400">Time block:</span>
+                                        <input
+                                            type="time"
+                                            :value="task.scheduled_start_time || ''"
+                                            @change="saveTimeBlock(task, ($event.target as HTMLInputElement).value || null, task.scheduled_end_time || null)"
+                                            class="text-[11px] py-0.5 px-1.5 rounded border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 font-mono"
+                                        />
+                                        <span v-if="task.scheduled_start_time" class="text-[10px] text-neutral-400">&ndash;</span>
+                                        <input
+                                            v-if="task.scheduled_start_time"
+                                            type="time"
+                                            :value="task.scheduled_end_time || ''"
+                                            @change="saveTimeBlock(task, task.scheduled_start_time || null, ($event.target as HTMLInputElement).value || null)"
+                                            class="text-[11px] py-0.5 px-1.5 rounded border-neutral-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-200 font-mono"
+                                        />
+                                        <button
+                                            v-if="task.scheduled_start_time"
+                                            type="button"
+                                            @click="saveTimeBlock(task, null, null)"
+                                            class="p-0.5 rounded text-neutral-400 hover:text-rose-500"
+                                            title="Clear time block"
+                                        >
+                                            <X class="w-3 h-3" />
+                                        </button>
                                     </div>
                                 </div>
 
@@ -402,8 +572,65 @@ const submitReschedule = (task: Task) => {
                     </div>
                 </div>
 
-                <!-- Right Col: Fixed Commitments, Fallback Plan & Recovery Time -->
+                <!-- Right Col: Visual Time-Blocking Timeline, Fixed Commitments & Fallback Plan -->
                 <div class="space-y-6">
+                    <!-- Interactive Visual Hourly Time-Blocking Timeline (06:00 - 23:00) -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
+                        <div class="flex items-center justify-between gap-2 mb-3">
+                            <div class="flex items-center gap-2">
+                                <span class="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                                    <Clock class="w-4 h-4" />
+                                </span>
+                                <div>
+                                    <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Visual Time-Block Schedule</h3>
+                                    <p class="text-[11px] text-neutral-400">Drag planned tasks onto any hour slot (06:00–23:00)</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="max-h-[26rem] overflow-y-auto divide-y divide-neutral-100 dark:divide-neutral-800/80 border border-neutral-100 dark:border-neutral-800 rounded-xl">
+                            <div
+                                v-for="hm in timelineHours"
+                                :key="hm"
+                                @dragover.prevent="dragOverHour = hm"
+                                @dragleave="dragOverHour === hm ? (dragOverHour = null) : null"
+                                @drop.prevent="onDropHour(hm)"
+                                class="flex items-stretch min-h-[2.4rem] text-xs transition-colors"
+                                :class="
+                                    dragOverHour === hm
+                                        ? 'bg-indigo-50/70 dark:bg-indigo-950/40'
+                                        : 'hover:bg-neutral-50/60 dark:hover:bg-neutral-800/30'
+                                "
+                            >
+                                <div class="w-14 shrink-0 py-2 px-2 font-mono text-[10px] text-neutral-400 border-r border-neutral-100 dark:border-neutral-800 select-none">
+                                    {{ hm }}
+                                </div>
+                                <div class="flex-1 p-1.5 space-y-1">
+                                    <div
+                                        v-for="evt in timelineByHour[hm]?.events || []"
+                                        :key="'tl-evt-' + evt.id"
+                                        class="px-2 py-1 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200/70 dark:border-blue-900 text-blue-800 dark:text-blue-200 text-[11px] flex items-center justify-between gap-2"
+                                    >
+                                        <span class="font-medium truncate">{{ evt.title }}</span>
+                                        <span class="font-mono text-[10px] shrink-0">{{ evt.local_start_hm }}–{{ evt.local_end_hm }}</span>
+                                    </div>
+                                    <div
+                                        v-for="t in timelineByHour[hm]?.tasks || []"
+                                        :key="'tl-task-' + t.id"
+                                        class="px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200/70 dark:border-indigo-900 text-indigo-800 dark:text-indigo-200 text-[11px] flex items-center justify-between gap-2"
+                                    >
+                                        <span class="font-medium truncate" :class="{ 'line-through opacity-60': t.status === 'completed' }">
+                                            {{ t.title }}
+                                        </span>
+                                        <span class="font-mono text-[10px] shrink-0">
+                                            {{ t.scheduled_start_time }}<template v-if="t.scheduled_end_time">–{{ t.scheduled_end_time }}</template>
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Fixed Commitments (Calendar Events on this Date) -->
                     <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
                         <div class="flex items-center gap-2 mb-3">

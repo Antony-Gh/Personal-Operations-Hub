@@ -6,7 +6,9 @@ use App\Models\Project;
 use App\Models\Tag;
 use App\Models\Task;
 use App\Models\TaskChecklist;
+use App\Services\NaturalLanguageTaskParser;
 use App\Services\RecurringTaskService;
+use App\Services\TaskDependencyService;
 use App\Support\UserDateTime;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -25,7 +27,7 @@ class TaskController extends Controller
         $localToday = $user->localToday();
         $today = $localToday->toDateString();
 
-        $query = Task::with(['category', 'project', 'tags', 'checklists'])
+        $query = Task::with(['category', 'project', 'tags', 'checklists', 'blockedByTasks:id,title,status,priority'])
             ->where('user_id', $user->id);
 
         // Search query
@@ -103,6 +105,12 @@ class TaskController extends Controller
 
         $tags = Tag::where('user_id', $user->id)->orderBy('name')->get();
 
+        $dependencyCandidates = Task::where('user_id', $user->id)
+            ->where('status', '!=', 'completed')
+            ->orderBy('title')
+            ->limit(200)
+            ->get(['id', 'title', 'status', 'project_id']);
+
         return Inertia::render('Tasks/Index', [
             'tasks' => $tasks,
             'kanbanTasks' => $kanbanTasks,
@@ -120,13 +128,66 @@ class TaskController extends Controller
             'viewMode' => $viewMode,
             'projects' => $projects,
             'tags' => $tags,
+            'dependencyCandidates' => $dependencyCandidates,
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function quickCapture(Request $request, NaturalLanguageTaskParser $parser): RedirectResponse
+    {
+        $validated = $request->validate([
+            'input' => 'required|string|max:500',
+        ]);
+
+        $user = $request->user();
+        $setting = $user->ensureSetting();
+        $parsed = $parser->parse($validated['input'], $user);
+
+        $defaultPreset = $setting->default_task_reminder_preset ?: 'none';
+        $dueDate = $parsed['due_date'] ?? $user->localTodayDate();
+
+        $task = Task::create([
+            'user_id' => $user->id,
+            'category_id' => $parsed['category_id'],
+            'project_id' => $parsed['project_id'],
+            'title' => $parsed['title'],
+            'priority' => $parsed['priority'] ?? ($setting->default_priority ?: 'medium'),
+            'status' => 'not_started',
+            'due_date' => $dueDate,
+            'due_time' => $parsed['due_time'],
+            'estimated_duration' => $parsed['estimated_duration'] ?? ($setting->default_task_duration ?: 30),
+            'reminder_preset' => $defaultPreset,
+        ]);
+
+        return back()->with('success', "Captured task: \"{$task->title}\".");
+    }
+
+    public function store(Request $request, NaturalLanguageTaskParser $parser, TaskDependencyService $dependencyService): RedirectResponse
     {
         $user = $request->user();
         $validated = $this->validateTaskPayload($request, isUpdate: false);
+
+        if ($request->boolean('smart_parse')) {
+            $parsed = $parser->parse($validated['title'], $user);
+            $validated['title'] = $parsed['title'];
+            if ($parsed['priority'] !== null) {
+                $validated['priority'] = $parsed['priority'];
+            }
+            if ($parsed['category_id'] !== null && empty($validated['category_id'])) {
+                $validated['category_id'] = $parsed['category_id'];
+            }
+            if ($parsed['project_id'] !== null && empty($validated['project_id'])) {
+                $validated['project_id'] = $parsed['project_id'];
+            }
+            if ($parsed['due_date'] !== null) {
+                $validated['due_date'] = $parsed['due_date'];
+            }
+            if ($parsed['due_time'] !== null && empty($validated['due_time'])) {
+                $validated['due_time'] = $parsed['due_time'];
+            }
+            if ($parsed['estimated_duration'] !== null) {
+                $validated['estimated_duration'] = $parsed['estimated_duration'];
+            }
+        }
 
         $remindAtUtc = null;
         if (! empty($validated['remind_at'])) {
@@ -140,7 +201,7 @@ class TaskController extends Controller
 
         $isRecurring = (bool) ($validated['is_recurring'] ?? false);
 
-        DB::transaction(function () use ($validated, $user, $remindAtUtc, $preset, $isRecurring): void {
+        DB::transaction(function () use ($validated, $user, $remindAtUtc, $preset, $isRecurring, $dependencyService): void {
             $task = Task::create([
                 'user_id' => $user->id,
                 'category_id' => $validated['category_id'] ?? null,
@@ -172,6 +233,10 @@ class TaskController extends Controller
                 $task->tags()->sync($validated['tag_ids']);
             }
 
+            if (! empty($validated['blocked_by_ids'])) {
+                $dependencyService->syncDependencies($task, $validated['blocked_by_ids'], $user);
+            }
+
             if (! empty($validated['checklists'])) {
                 foreach ($validated['checklists'] as $idx => $cl) {
                     TaskChecklist::create([
@@ -187,7 +252,7 @@ class TaskController extends Controller
         return back()->with('success', 'Task created successfully.');
     }
 
-    public function update(Request $request, Task $task): RedirectResponse
+    public function update(Request $request, Task $task, TaskDependencyService $dependencyService): RedirectResponse
     {
         $this->authorize('update', $task);
         $user = $request->user();
@@ -203,7 +268,7 @@ class TaskController extends Controller
 
         $isRecurring = (bool) ($validated['is_recurring'] ?? false);
 
-        DB::transaction(function () use ($task, $validated, $remindAtUtc, $isRecurring): void {
+        DB::transaction(function () use ($task, $validated, $remindAtUtc, $isRecurring, $dependencyService, $user): void {
             $statusChangedToCompleted = $validated['status'] === 'completed' && $task->status !== 'completed';
             $statusReopened = $validated['status'] !== 'completed' && $task->status === 'completed';
 
@@ -239,6 +304,10 @@ class TaskController extends Controller
                 $task->tags()->sync($validated['tag_ids']);
             }
 
+            if (array_key_exists('blocked_by_ids', $validated)) {
+                $dependencyService->syncDependencies($task, $validated['blocked_by_ids'] ?? [], $user);
+            }
+
             if (isset($validated['checklists'])) {
                 $existingIds = [];
                 foreach ($validated['checklists'] as $idx => $item) {
@@ -265,8 +334,11 @@ class TaskController extends Controller
                 TaskChecklist::where('task_id', $task->id)->whereNotIn('id', $existingIds)->delete();
             }
 
-            if ($statusChangedToCompleted && $task->is_recurring) {
-                app(RecurringTaskService::class)->generateNextOccurrence($task);
+            if ($statusChangedToCompleted) {
+                $dependencyService->handleTaskCompleted($task);
+                if ($task->is_recurring) {
+                    app(RecurringTaskService::class)->generateNextOccurrence($task);
+                }
             }
         });
 
@@ -300,7 +372,7 @@ class TaskController extends Controller
         if ($request->expectsJson()) {
             return response()->json([
                 'ok' => true,
-                'task' => $task->fresh(['category', 'project', 'tags', 'checklists']),
+                'task' => $task->fresh(['category', 'project', 'tags', 'checklists', 'blockedByTasks:id,title,status,priority']),
             ]);
         }
 
@@ -451,6 +523,12 @@ class TaskController extends Controller
                 'integer',
                 Rule::exists('tags', 'id')->where('user_id', $user->id),
             ],
+            'blocked_by_ids' => 'nullable|array',
+            'blocked_by_ids.*' => [
+                'integer',
+                Rule::exists('tasks', 'id')->where('user_id', $user->id),
+            ],
+            'smart_parse' => 'nullable|boolean',
             'checklists' => 'nullable|array',
             'checklists.*.title' => 'required|string|max:255',
         ];

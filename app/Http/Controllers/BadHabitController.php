@@ -4,10 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\BadHabit;
 use App\Models\BadHabitCheckIn;
+use App\Models\Habit;
+use App\Models\HabitCheckIn;
 use App\Services\BadHabitAnalyticsService;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -19,11 +22,21 @@ class BadHabitController extends Controller
         $today = $user->localToday();
         $todayStr = $today->toDateString();
 
-        $badHabits = BadHabit::with('checkIns')
+        $badHabits = BadHabit::with(['checkIns', 'linkedHabit:id,name,category'])
             ->where('user_id', $user->id)
             ->active()
             ->orderBy('sort_order')
             ->get();
+
+        $availableHabits = Habit::where('user_id', $user->id)
+            ->active()
+            ->orderBy('sort_order')
+            ->get(['id', 'name', 'category']);
+
+        $todayLinkedHabitCheckIns = HabitCheckIn::where('user_id', $user->id)
+            ->where('date', $todayStr)
+            ->get()
+            ->keyBy('habit_id');
 
         $archivedBadHabits = BadHabit::where('user_id', $user->id)
             ->where('is_archived', true)
@@ -35,7 +48,7 @@ class BadHabitController extends Controller
             $pastDates->push($today->copy()->subDays($i)->toDateString());
         }
 
-        $badHabitsData = $badHabits->map(function (BadHabit $badHabit) use ($pastDates, $todayStr, $analytics, $user): array {
+        $badHabitsData = $badHabits->map(function (BadHabit $badHabit) use ($pastDates, $todayStr, $analytics, $user, $todayLinkedHabitCheckIns): array {
             $byDate = $badHabit->checkIns->keyBy(fn (BadHabitCheckIn $ci): string => Carbon::parse($ci->date)->toDateString());
 
             $history = $pastDates->map(function (string $d) use ($byDate): array {
@@ -52,6 +65,9 @@ class BadHabitController extends Controller
 
             $metrics = $analytics->calculateMetrics($badHabit, $user, $badHabit->checkIns);
             $todayCI = $byDate->get($todayStr);
+            $linkedHabitStatus = $badHabit->linked_habit_id
+                ? ($todayLinkedHabitCheckIns->get($badHabit->linked_habit_id)?->status ?? 'pending')
+                : null;
 
             return [
                 'id' => $badHabit->id,
@@ -60,6 +76,17 @@ class BadHabitController extends Controller
                 'category' => $badHabit->category,
                 'trigger_cue' => $badHabit->trigger_cue,
                 'replacement_action' => $badHabit->replacement_action,
+                'linked_habit_id' => $badHabit->linked_habit_id,
+                'linked_habit' => $badHabit->linkedHabit ? [
+                    'id' => $badHabit->linkedHabit->id,
+                    'name' => $badHabit->linkedHabit->name,
+                    'category' => $badHabit->linkedHabit->category,
+                    'today_status' => $linkedHabitStatus,
+                ] : null,
+                'minutes_saved_per_day' => $badHabit->minutes_saved_per_day,
+                'money_saved_per_day' => $badHabit->money_saved_per_day,
+                'minutes_reclaimed' => $metrics['minutes_reclaimed'],
+                'money_reclaimed' => $metrics['money_reclaimed'],
                 'has_daily_limit' => $badHabit->has_daily_limit,
                 'daily_limit_value' => $badHabit->daily_limit_value,
                 'daily_limit_unit' => $badHabit->daily_limit_unit,
@@ -83,6 +110,10 @@ class BadHabitController extends Controller
         });
 
         $heatmap = $analytics->buildMonthlyHeatmap($user, $request->input('heatmap_month'));
+        $triggerAnalytics = $analytics->buildTriggerAnalytics($user);
+
+        $totalMinutesReclaimed = (int) $badHabitsData->sum('minutes_reclaimed');
+        $totalMoneyReclaimed = round((float) $badHabitsData->sum('money_reclaimed'), 2);
 
         $summary = [
             'top_clean_streak' => (int) ($badHabitsData->max('current_clean_streak') ?? 0),
@@ -96,13 +127,18 @@ class BadHabitController extends Controller
             'stayed_clean_today_count' => $badHabitsData->where('today_status', 'clean')->count(),
             'slipped_today_count' => $badHabitsData->whereIn('today_status', ['minor_slip', 'slipped'])->count(),
             'total_active_bad_habits' => $badHabitsData->count(),
+            'total_minutes_reclaimed' => $totalMinutesReclaimed,
+            'total_hours_reclaimed' => round($totalMinutesReclaimed / 60, 1),
+            'total_money_reclaimed' => $totalMoneyReclaimed,
         ];
 
         return Inertia::render('BadHabits/Index', [
             'badHabits' => $badHabitsData,
+            'availableHabits' => $availableHabits,
             'archivedBadHabits' => $archivedBadHabits,
             'summary' => $summary,
             'heatmap' => $heatmap,
+            'triggerAnalytics' => $triggerAnalytics,
             'todayDate' => $todayStr,
             'pastDates' => $pastDates,
         ]);
@@ -123,6 +159,9 @@ class BadHabitController extends Controller
             'category' => $validated['category'] ?: 'Digital Discipline',
             'trigger_cue' => $validated['trigger_cue'] ?? null,
             'replacement_action' => $validated['replacement_action'] ?? null,
+            'linked_habit_id' => $validated['linked_habit_id'] ?? null,
+            'minutes_saved_per_day' => (int) ($validated['minutes_saved_per_day'] ?? 0),
+            'money_saved_per_day' => round((float) ($validated['money_saved_per_day'] ?? 0), 2),
             'has_daily_limit' => $hasLimit,
             'daily_limit_value' => $hasLimit ? (int) ($validated['daily_limit_value'] ?? 0) : null,
             'daily_limit_unit' => $hasLimit ? ($validated['daily_limit_unit'] ?? 'times') : 'times',
@@ -146,6 +185,9 @@ class BadHabitController extends Controller
             'category' => $validated['category'] ?: 'Digital Discipline',
             'trigger_cue' => $validated['trigger_cue'] ?? null,
             'replacement_action' => $validated['replacement_action'] ?? null,
+            'linked_habit_id' => $validated['linked_habit_id'] ?? null,
+            'minutes_saved_per_day' => (int) ($validated['minutes_saved_per_day'] ?? 0),
+            'money_saved_per_day' => round((float) ($validated['money_saved_per_day'] ?? 0), 2),
             'has_daily_limit' => $hasLimit,
             'daily_limit_value' => $hasLimit ? (int) ($validated['daily_limit_value'] ?? 0) : null,
             'daily_limit_unit' => $hasLimit ? ($validated['daily_limit_unit'] ?? 'times') : 'times',
@@ -165,8 +207,10 @@ class BadHabitController extends Controller
             'observed_value' => 'nullable|integer|min:0|max:100000',
             'trigger_note' => 'nullable|string|max:255',
             'notes' => 'nullable|string|max:2000',
+            'log_replacement' => 'nullable|boolean',
         ]);
 
+        $user = $request->user();
         $dateStr = Carbon::parse($validated['date'])->toDateString();
         $existing = BadHabitCheckIn::where('bad_habit_id', $badHabit->id)
             ->where('date', $dateStr)
@@ -198,7 +242,7 @@ class BadHabitController extends Controller
 
         BadHabitCheckIn::updateOrCreate(
             [
-                'user_id' => $request->user()->id,
+                'user_id' => $user->id,
                 'bad_habit_id' => $badHabit->id,
                 'date' => $dateStr,
             ],
@@ -209,6 +253,26 @@ class BadHabitController extends Controller
                 'notes' => $notes,
             ]
         );
+
+        if ($resolvedStatus === 'clean' && ! empty($validated['log_replacement']) && $badHabit->linked_habit_id !== null) {
+            $linkedHabit = Habit::where('id', $badHabit->linked_habit_id)
+                ->where('user_id', $user->id)
+                ->first();
+
+            if ($linkedHabit) {
+                HabitCheckIn::updateOrCreate(
+                    [
+                        'user_id' => $user->id,
+                        'habit_id' => $linkedHabit->id,
+                        'date' => $dateStr,
+                    ],
+                    [
+                        'status' => 'completed',
+                        'notes' => "Completed via healthy replacement for \"{$badHabit->name}\".",
+                    ]
+                );
+            }
+        }
 
         return back()->with('success', 'Check-in recorded.');
     }
@@ -236,12 +300,21 @@ class BadHabitController extends Controller
      */
     private function validateBadHabit(Request $request): array
     {
+        $user = $request->user();
+
         return $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
             'category' => 'nullable|string|max:100',
             'trigger_cue' => 'nullable|string|max:255',
             'replacement_action' => 'nullable|string|max:255',
+            'linked_habit_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('habits', 'id')->where('user_id', $user->id),
+            ],
+            'minutes_saved_per_day' => 'nullable|integer|min:0|max:1440',
+            'money_saved_per_day' => 'nullable|numeric|min:0|max:100000',
             'has_daily_limit' => 'nullable|boolean',
             'daily_limit_value' => 'nullable|required_if:has_daily_limit,true|integer|min:0|max:10000',
             'daily_limit_unit' => 'nullable|in:times,minutes',
@@ -249,4 +322,3 @@ class BadHabitController extends Controller
         ]);
     }
 }
-

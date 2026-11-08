@@ -5,6 +5,7 @@ import axios from 'axios';
 import { PageProps } from '@/types';
 import { useTheme } from '@/composables/useTheme';
 import { useFocusTimer } from '@/composables/useFocusTimer';
+import { previewNaturalTaskTokens } from '@/utils/naturalTaskParser';
 import {
     Search,
     CheckSquare,
@@ -12,6 +13,7 @@ import {
     Flag,
     Sparkles,
     ShieldAlert,
+    BarChart3,
     Plus,
     Timer,
     Sun,
@@ -141,6 +143,14 @@ const quickActions = computed(() => [
         run: () => router.visit(route('bad-habits.index')),
     },
     {
+        id: 'nav-analytics',
+        group: 'Navigation',
+        title: 'Go to Personal Analytics & Insights',
+        subtitle: 'Estimation accuracy, deep work by area & screen-time correlations',
+        icon: BarChart3,
+        run: () => router.visit(route('analytics.index')),
+    },
+    {
         id: 'nav-backups',
         group: 'Navigation',
         title: 'Manage Automated SQLite Backups',
@@ -159,7 +169,8 @@ const quickActions = computed(() => [
 ]);
 
 const flattenedItems = computed(() => {
-    const q = query.value.trim().toLowerCase();
+    const rawTrimmed = query.value.trim();
+    const q = rawTrimmed.toLowerCase();
     const list: {
         id: string;
         group: string;
@@ -169,6 +180,22 @@ const flattenedItems = computed(() => {
         icon: any;
         run: () => void;
     }[] = [];
+
+    if (rawTrimmed.length > 2) {
+        const parsed = previewNaturalTaskTokens(rawTrimmed);
+        const tokenHints = parsed.tokens.map((t) => t.label).join(' • ');
+        list.push({
+            id: 'smart-quick-capture',
+            group: 'Smart Quick Capture',
+            title: `Capture Task: "${parsed.cleanTitle || rawTrimmed}"`,
+            subtitle: tokenHints || 'Press Enter to instant-create task (supports !high ~45m #Area +Project tomorrow 17:00)',
+            badge: parsed.tokens.length > 0 ? 'Smart' : undefined,
+            icon: Plus,
+            run: () => {
+                router.post(route('tasks.quick-capture'), { input: rawTrimmed }, { preserveScroll: true });
+            },
+        });
+    }
 
     const matchingStatic = quickActions.value.filter(
         (a) => !q || a.title.toLowerCase().includes(q) || a.subtitle.toLowerCase().includes(q)

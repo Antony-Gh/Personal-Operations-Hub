@@ -19,6 +19,8 @@ import {
     RotateCcw,
     CheckCircle2,
     HardDrive,
+    Lock,
+    FolderSync,
     X,
 } from 'lucide-vue-next';
 
@@ -40,8 +42,28 @@ const props = defineProps<{
         backup_enabled: boolean;
         backup_retention_days: number;
         directory: string;
+        secondary_backup_enabled?: boolean;
+        secondary_backup_path?: string | null;
+        backup_encryption_enabled?: boolean;
+        has_backup_encryption_password?: boolean;
     };
 }>();
+
+const secondaryForm = useForm({
+    secondary_backup_enabled: props.backupConfig?.secondary_backup_enabled ?? false,
+    secondary_backup_path: props.backupConfig?.secondary_backup_path || '',
+    backup_encryption_enabled: props.backupConfig?.backup_encryption_enabled ?? false,
+    backup_encryption_password: '',
+});
+
+const saveSecondaryBackupConfig = () => {
+    secondaryForm.put(route('settings.backups.secondary'), {
+        preserveScroll: true,
+        onSuccess: () => {
+            secondaryForm.backup_encryption_password = '';
+        },
+    });
+};
 
 // Managed SQLite Backup Actions
 const isCreatingBackup = ref(false);
@@ -250,16 +272,25 @@ const executeImport = () => {
                                     {{ b.size_human }}
                                 </td>
                                 <td class="py-2.5 px-3 whitespace-nowrap">
-                                    <span
-                                        class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase"
-                                        :class="
-                                            b.integrity_status === 'ok'
-                                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
-                                                : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
-                                        "
-                                    >
-                                        {{ b.integrity_status }}
-                                    </span>
+                                    <div class="inline-flex items-center gap-1.5">
+                                        <span
+                                            class="px-2 py-0.5 rounded text-[10px] font-semibold uppercase"
+                                            :class="
+                                                b.integrity_status === 'ok'
+                                                    ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'
+                                                    : 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300'
+                                            "
+                                        >
+                                            {{ b.integrity_status }}
+                                        </span>
+                                        <span
+                                            v-if="b.mirrored_to"
+                                            class="px-1.5 py-0.5 rounded text-[10px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300"
+                                            :title="`Mirrored to: ${b.mirrored_to}`"
+                                        >
+                                            {{ b.encrypted_mirror ? 'AES-256 Mirrored' : 'Mirrored' }}
+                                        </span>
+                                    </div>
                                 </td>
                                 <td class="py-2.5 pl-3 text-right whitespace-nowrap">
                                     <div class="inline-flex items-center gap-2">
@@ -291,6 +322,92 @@ const executeImport = () => {
                         </tbody>
                     </table>
                 </div>
+            </div>
+
+            <!-- Secondary Backup Folder & Optional AES-256 Encryption -->
+            <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-6 shadow-xs space-y-4">
+                <div class="flex items-center gap-2 border-b border-neutral-100 dark:border-neutral-800 pb-3">
+                    <FolderSync class="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+                    <div>
+                        <h3 class="text-sm font-bold text-neutral-900 dark:text-white">
+                            Secondary Backup Mirror & AES-256 Local Encryption
+                        </h3>
+                        <p class="text-[11px] text-neutral-400">
+                            Automatically mirror every verified SQLite snapshot to a second local Windows folder, external USB drive, or synced directory
+                        </p>
+                    </div>
+                </div>
+
+                <form @submit.prevent="saveSecondaryBackupConfig" class="space-y-4 text-xs">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label class="flex items-center gap-2.5 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                            <input type="checkbox" v-model="secondaryForm.secondary_backup_enabled" class="rounded text-indigo-600" />
+                            <div>
+                                <span class="font-semibold text-neutral-900 dark:text-white block">Enable Secondary Folder Mirror</span>
+                                <span class="text-[10px] text-neutral-400">Copy every snapshot automatically</span>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center gap-2.5 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                            <input type="checkbox" v-model="secondaryForm.backup_encryption_enabled" class="rounded text-indigo-600" />
+                            <div>
+                                <span class="font-semibold text-neutral-900 dark:text-white inline-flex items-center gap-1">
+                                    <Lock class="w-3 h-3 text-emerald-500" /> AES-256-CBC + HMAC Encryption
+                                </span>
+                                <span class="text-[10px] text-neutral-400 block">Encrypt mirrored files as <code class="font-mono">.sqlite.enc</code></span>
+                            </div>
+                        </label>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Secondary Windows Folder Path
+                            </label>
+                            <input
+                                v-model="secondaryForm.secondary_backup_path"
+                                type="text"
+                                placeholder="e.g. D:\Backups\OperationsHub or C:\Users\You\OneDrive\OpsBackups"
+                                class="w-full text-xs font-mono rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                            />
+                            <p v-if="secondaryForm.errors.secondary_backup_path" class="text-[11px] text-rose-500 mt-1">
+                                {{ secondaryForm.errors.secondary_backup_path }}
+                            </p>
+                        </div>
+
+                        <div>
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Encryption Passphrase
+                                <span v-if="backupConfig?.has_backup_encryption_password" class="text-emerald-600 dark:text-emerald-400 font-normal">
+                                    (Saved — leave blank to keep current)
+                                </span>
+                            </label>
+                            <input
+                                v-model="secondaryForm.backup_encryption_password"
+                                type="password"
+                                autocomplete="new-password"
+                                placeholder="Minimum 6 characters for PBKDF2-SHA256 key"
+                                class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                            />
+                            <p v-if="secondaryForm.errors.backup_encryption_password" class="text-[11px] text-rose-500 mt-1">
+                                {{ secondaryForm.errors.backup_encryption_password }}
+                            </p>
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-1">
+                        <span class="text-[11px] text-neutral-400">
+                            Decrypt anytime offline via CLI: <code class="font-mono">php artisan ops:decrypt-backup file.sqlite.enc restored.sqlite</code>
+                        </span>
+                        <button
+                            type="submit"
+                            :disabled="secondaryForm.processing"
+                            class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-medium shadow-sm transition disabled:opacity-50"
+                        >
+                            Save Mirror Settings
+                        </button>
+                    </div>
+                </form>
             </div>
 
             <!-- Export Cards Grid -->

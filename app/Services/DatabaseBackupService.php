@@ -96,7 +96,15 @@ class DatabaseBackupService
                 'trigger' => $safeTrigger,
                 'tables_count' => $tablesCount,
                 'sqlite_version' => SQLite3::version()['versionString'] ?? 'unknown',
+                'mirrored_to' => null,
+                'encrypted_mirror' => false,
             ];
+
+            $mirrorOutcome = $this->mirrorToSecondaryFolderIfConfigured($targetPath, $filename, $notifyUser);
+            if ($mirrorOutcome !== null) {
+                $metadata['mirrored_to'] = $mirrorOutcome['mirrored_to'];
+                $metadata['encrypted_mirror'] = $mirrorOutcome['encrypted_mirror'];
+            }
 
             File::put(
                 $this->metadataPathFor($targetPath),
@@ -167,6 +175,8 @@ class DatabaseBackupService
                 'integrity_status' => $meta['integrity_status'] ?? 'ok',
                 'trigger' => $meta['trigger'] ?? 'manual',
                 'tables_count' => $meta['tables_count'] ?? null,
+                'mirrored_to' => $meta['mirrored_to'] ?? null,
+                'encrypted_mirror' => (bool) ($meta['encrypted_mirror'] ?? false),
             ];
         }
 
@@ -389,5 +399,144 @@ class DatabaseBackupService
         }
 
         return round($bytes / 1048576, 2).' MB';
+    }
+
+    /**
+     * Encrypt a verified SQLite snapshot using AES-256-CBC + PBKDF2-SHA256 + HMAC-SHA256 authentication.
+     *
+     * Binary layout: "OPSHUBENC1" (10B) | salt (16B) | iv (16B) | hmac (32B) | ciphertext
+     *
+     * @return array{path: string, size_bytes: int}
+     */
+    public function encryptBackupFile(string $sourceSqlitePath, string $destEncPath, string $passphrase): array
+    {
+        if (! File::exists($sourceSqlitePath)) {
+            throw new RuntimeException('Source SQLite snapshot does not exist.');
+        }
+
+        if ($passphrase === '') {
+            throw new RuntimeException('Encryption passphrase cannot be empty.');
+        }
+
+        $plaintext = (string) File::get($sourceSqlitePath);
+        $salt = random_bytes(16);
+        $iv = random_bytes(16);
+        $keyMaterial = hash_pbkdf2('sha256', $passphrase, $salt, 100000, 64, true);
+        $encKey = substr($keyMaterial, 0, 32);
+        $macKey = substr($keyMaterial, 32, 32);
+
+        $ciphertext = openssl_encrypt($plaintext, 'aes-256-cbc', $encKey, OPENSSL_RAW_DATA, $iv);
+        if ($ciphertext === false) {
+            throw new RuntimeException('OpenSSL AES-256-CBC encryption failed.');
+        }
+
+        $magic = 'OPSHUBENC1';
+        $hmac = hash_hmac('sha256', $magic.$salt.$iv.$ciphertext, $macKey, true);
+        $bundle = $magic.$salt.$iv.$hmac.$ciphertext;
+
+        $destDir = dirname($destEncPath);
+        if (! File::isDirectory($destDir)) {
+            File::makeDirectory($destDir, 0755, true);
+        }
+
+        File::put($destEncPath, $bundle);
+
+        return [
+            'path' => $destEncPath,
+            'size_bytes' => strlen($bundle),
+        ];
+    }
+
+    /**
+     * Authenticate and decrypt an AES-256-CBC encrypted backup bundle back into a SQLite file.
+     */
+    public function decryptBackupFile(string $sourceEncPath, string $destSqlitePath, string $passphrase): void
+    {
+        if (! File::exists($sourceEncPath)) {
+            throw new RuntimeException('Encrypted backup file not found.');
+        }
+
+        $bundle = (string) File::get($sourceEncPath);
+        $headerLen = 10 + 16 + 16 + 32;
+
+        if (strlen($bundle) <= $headerLen || substr($bundle, 0, 10) !== 'OPSHUBENC1') {
+            throw new RuntimeException('Invalid encrypted backup file header.');
+        }
+
+        $magic = substr($bundle, 0, 10);
+        $salt = substr($bundle, 10, 16);
+        $iv = substr($bundle, 26, 16);
+        $storedHmac = substr($bundle, 42, 32);
+        $ciphertext = substr($bundle, 74);
+
+        $keyMaterial = hash_pbkdf2('sha256', $passphrase, $salt, 100000, 64, true);
+        $encKey = substr($keyMaterial, 0, 32);
+        $macKey = substr($keyMaterial, 32, 32);
+
+        $computedHmac = hash_hmac('sha256', $magic.$salt.$iv.$ciphertext, $macKey, true);
+        if (! hash_equals($storedHmac, $computedHmac)) {
+            throw new RuntimeException('Backup authentication failed — wrong passphrase or corrupted archive.');
+        }
+
+        $plaintext = openssl_decrypt($ciphertext, 'aes-256-cbc', $encKey, OPENSSL_RAW_DATA, $iv);
+        if ($plaintext === false || substr($plaintext, 0, 16) !== "SQLite format 3\0") {
+            throw new RuntimeException('Failed to decrypt valid SQLite payload.');
+        }
+
+        $destDir = dirname($destSqlitePath);
+        if (! File::isDirectory($destDir)) {
+            File::makeDirectory($destDir, 0755, true);
+        }
+
+        File::put($destSqlitePath, $plaintext);
+    }
+
+    /**
+     * Mirror a newly verified snapshot to the user's secondary backup folder (optionally AES-256 encrypted).
+     *
+     * @return array{mirrored_to: string, encrypted_mirror: bool}|null
+     */
+    private function mirrorToSecondaryFolderIfConfigured(string $sourceSqlitePath, string $filename, ?User $notifyUser = null): ?array
+    {
+        try {
+            $owner = $notifyUser ?? User::with('setting')->first();
+            $setting = $owner?->setting;
+            if (! $setting || ! $setting->secondary_backup_enabled || empty($setting->secondary_backup_path)) {
+                return null;
+            }
+
+            $secondaryDir = rtrim(trim((string) $setting->secondary_backup_path), '\\/');
+            if ($secondaryDir === '') {
+                return null;
+            }
+
+            if (! File::isDirectory($secondaryDir)) {
+                File::makeDirectory($secondaryDir, 0755, true);
+            }
+
+            $passphrase = $setting->backup_encryption_enabled ? $setting->decryptedBackupEncryptionPassword() : null;
+
+            if ($setting->backup_encryption_enabled && ! empty($passphrase)) {
+                $encTarget = $secondaryDir.DIRECTORY_SEPARATOR.$filename.'.enc';
+                $this->encryptBackupFile($sourceSqlitePath, $encTarget, $passphrase);
+
+                return [
+                    'mirrored_to' => $encTarget,
+                    'encrypted_mirror' => true,
+                ];
+            }
+
+            $plainTarget = $secondaryDir.DIRECTORY_SEPARATOR.$filename;
+            File::copy($sourceSqlitePath, $plainTarget);
+
+            return [
+                'mirrored_to' => $plainTarget,
+                'encrypted_mirror' => false,
+            ];
+        } catch (Throwable $e) {
+            Log::warning('Secondary backup folder mirror skipped.', ['error' => $e->getMessage()]);
+
+            return null;
+        }
     }
 }

@@ -22,6 +22,9 @@ class BadHabitFactory extends Factory
             'category' => 'Digital Discipline',
             'trigger_cue' => 'Fatigue after late study session',
             'replacement_action' => 'Drink water and read 5 pages offline',
+            'linked_habit_id' => null,
+            'minutes_saved_per_day' => 0,
+            'money_saved_per_day' => 0,
             'has_daily_limit' => false,
             'daily_limit_value' => null,
             'daily_limit_unit' => 'times',
@@ -31,4 +34,3 @@ class BadHabitFactory extends Factory
         ];
     }
 }
-

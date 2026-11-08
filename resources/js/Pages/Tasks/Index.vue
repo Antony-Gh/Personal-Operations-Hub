@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TaskKanbanBoard from '@/Components/TaskKanbanBoard.vue';
@@ -22,6 +22,7 @@ import {
     Kanban,
     Timer,
     Bell,
+    Lock,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -47,6 +48,12 @@ const props = defineProps<{
     };
     projects: Project[];
     tags: Tag[];
+    dependencyCandidates?: {
+        id: number;
+        title: string;
+        status: string;
+        project_id: number | null;
+    }[];
 }>();
 
 const page = usePage<PageProps>();
@@ -187,8 +194,25 @@ const taskForm = useForm({
     recurrence_end_date: '',
     recurrence_max_occurrences: null as number | null,
     tag_ids: [] as number[],
+    blocked_by_ids: [] as number[],
     checklists: [] as { id?: number; title: string; is_completed?: boolean }[],
 });
+
+const incompleteBlockers = (task: Task) =>
+    (task.blocked_by_tasks || []).filter((b) => b.status !== 'completed');
+
+const availableBlockersForModal = computed(() =>
+    (props.dependencyCandidates || []).filter((cand) => !activeTask.value || cand.id !== activeTask.value.id)
+);
+
+const toggleBlockerSelection = (blockerId: number) => {
+    const idx = taskForm.blocked_by_ids.indexOf(blockerId);
+    if (idx >= 0) {
+        taskForm.blocked_by_ids.splice(idx, 1);
+    } else {
+        taskForm.blocked_by_ids.push(blockerId);
+    }
+};
 
 const openCreateModal = () => {
     const setting = page.props.auth.user?.setting;
@@ -213,6 +237,7 @@ const openCreateModal = () => {
     taskForm.recurrence_end_date = '';
     taskForm.recurrence_max_occurrences = null;
     taskForm.tag_ids = [];
+    taskForm.blocked_by_ids = [];
     taskForm.checklists = [];
     newCustomReminderInput.value = '';
     isEditing.value = true;
@@ -244,6 +269,7 @@ const openEditModal = (task: Task) => {
     taskForm.recurrence_end_date = task.recurrence_end_date || '';
     taskForm.recurrence_max_occurrences = task.recurrence_max_occurrences ?? null;
     taskForm.tag_ids = task.tags?.map((t) => t.id) || [];
+    taskForm.blocked_by_ids = task.blocked_by_tasks?.map((b) => b.id) || [];
     taskForm.checklists =
         task.checklists?.map((c) => ({
             id: c.id,
@@ -589,6 +615,14 @@ const saveTask = () => {
                                             title="Reminder enabled"
                                         >
                                             <Bell class="w-3 h-3" />
+                                        </span>
+                                        <span
+                                            v-if="incompleteBlockers(task).length > 0"
+                                            class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900"
+                                            :title="'Blocked by: ' + incompleteBlockers(task).map((b) => b.title).join(', ')"
+                                        >
+                                            <Lock class="w-2.5 h-2.5" />
+                                            Blocked by {{ incompleteBlockers(task).length }}
                                         </span>
                                         <span v-for="tag in task.tags" :key="tag.id" class="px-1.5 py-0.2 rounded text-[9px] bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300">
                                             #{{ tag.name }}
@@ -952,6 +986,40 @@ const saveTask = () => {
                                 placeholder="e.g. Check solder connection on pin 4"
                                 class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
                             />
+                        </div>
+
+                        <!-- Task Dependencies (Blocked By) -->
+                        <div v-if="availableBlockersForModal.length > 0" class="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 space-y-2">
+                            <div class="flex items-center justify-between">
+                                <label class="inline-flex items-center gap-1.5 font-semibold text-neutral-800 dark:text-neutral-200">
+                                    <Lock class="w-3.5 h-3.5 text-amber-500" />
+                                    <span>Blocked By (Prerequisite Tasks)</span>
+                                </label>
+                                <span v-if="taskForm.blocked_by_ids.length > 0" class="text-[11px] font-medium text-amber-600 dark:text-amber-400">
+                                    {{ taskForm.blocked_by_ids.length }} selected (auto-promotes when completed)
+                                </span>
+                            </div>
+                            <p v-if="(taskForm.errors as any).blocked_by_ids" class="text-[11px] text-rose-500">
+                                {{ (taskForm.errors as any).blocked_by_ids }}
+                            </p>
+                            <div class="max-h-32 overflow-y-auto space-y-1 pr-1">
+                                <label
+                                    v-for="cand in availableBlockersForModal"
+                                    :key="cand.id"
+                                    class="flex items-center justify-between gap-2 px-2 py-1 rounded-lg hover:bg-white dark:hover:bg-neutral-900 cursor-pointer text-xs"
+                                >
+                                    <span class="flex items-center gap-2 min-w-0">
+                                        <input
+                                            type="checkbox"
+                                            :checked="taskForm.blocked_by_ids.includes(cand.id)"
+                                            @change="toggleBlockerSelection(cand.id)"
+                                            class="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                                        />
+                                        <span class="truncate text-neutral-800 dark:text-neutral-200">{{ cand.title }}</span>
+                                    </span>
+                                    <span class="text-[10px] uppercase text-neutral-400 shrink-0">{{ cand.status.replace('_', ' ') }}</span>
+                                </label>
+                            </div>
                         </div>
 
                         <!-- Tags -->

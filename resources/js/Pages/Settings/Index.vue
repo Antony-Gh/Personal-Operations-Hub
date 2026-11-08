@@ -70,6 +70,7 @@ const settingForm = useForm({
     weekly_review_prompts: [...(props.setting.weekly_review_prompts || [])],
     notifications_enabled: props.setting.notifications_enabled ?? true,
     browser_notifications_enabled: props.setting.browser_notifications_enabled ?? true,
+    windows_toast_enabled: props.setting.windows_toast_enabled ?? false,
     notification_sound_enabled: props.setting.notification_sound_enabled ?? true,
     notification_sound: (props.setting.notification_sound || 'chime') as NotificationSoundPreset,
     notification_volume: props.setting.notification_volume ?? 70,
@@ -80,6 +81,8 @@ const settingForm = useForm({
     allow_critical_in_quiet_hours: props.setting.allow_critical_in_quiet_hours ?? true,
     daily_briefing_enabled: props.setting.daily_briefing_enabled ?? true,
     daily_briefing_time: props.setting.daily_briefing_time || '08:00',
+    evening_checkin_nudge_enabled: props.setting.evening_checkin_nudge_enabled ?? false,
+    evening_checkin_nudge_time: props.setting.evening_checkin_nudge_time || '20:30',
     weekly_digest_enabled: props.setting.weekly_digest_enabled ?? true,
     weekly_digest_day: props.setting.weekly_digest_day ?? 0,
     weekly_digest_time: props.setting.weekly_digest_time || '18:00',
@@ -170,6 +173,10 @@ const sendTestBrowserNotification = async () => {
         'Local Windows browser notification and sound are working properly.',
         '/settings'
     );
+};
+
+const sendTestWindowsToast = () => {
+    router.post(route('settings.test-windows-toast'), {}, { preserveScroll: true });
 };
 
 // Calendar feed controls
@@ -398,21 +405,38 @@ const submitSettings = () => {
                                 Local Notifications, Desktop Alerts & Sound
                             </h3>
                         </div>
-                        <button
-                            type="button"
-                            @click="sendTestBrowserNotification"
-                            class="px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium hover:bg-indigo-100 transition"
-                        >
-                            Test Desktop & Sound Alert
-                        </button>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <button
+                                type="button"
+                                @click="sendTestWindowsToast"
+                                class="px-3 py-1 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-medium hover:bg-emerald-100 transition"
+                            >
+                                Test Native Windows Toast
+                            </button>
+                            <button
+                                type="button"
+                                @click="sendTestBrowserNotification"
+                                class="px-3 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium hover:bg-indigo-100 transition"
+                            >
+                                Test Browser & Sound Alert
+                            </button>
+                        </div>
                     </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                         <label class="flex items-center gap-2.5 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
                             <input type="checkbox" v-model="settingForm.notifications_enabled" class="rounded text-indigo-600" />
                             <div>
                                 <span class="font-semibold text-neutral-900 dark:text-white block">In-App Notifications</span>
                                 <span class="text-[10px] text-neutral-400">Enable Notification Center & alarms</span>
+                            </div>
+                        </label>
+
+                        <label class="flex items-center gap-2.5 p-3 rounded-xl border border-neutral-200 dark:border-neutral-800 cursor-pointer">
+                            <input type="checkbox" v-model="settingForm.windows_toast_enabled" class="rounded text-indigo-600" />
+                            <div>
+                                <span class="font-semibold text-neutral-900 dark:text-white block">Browserless Windows Toast</span>
+                                <span class="text-[10px] text-neutral-400">Native Action Center alert even with browser closed</span>
                             </div>
                         </label>
 
@@ -433,6 +457,15 @@ const submitSettings = () => {
                                 <span class="text-[10px] text-neutral-400">Synthesized offline Web Audio</span>
                             </div>
                         </label>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[11px]">
+                        <span class="text-neutral-600 dark:text-neutral-300">
+                            <strong>Windows System Tray Companion:</strong> Launch live status icon, Quick Capture & 1-click backups from your taskbar:
+                        </span>
+                        <code class="px-2 py-1 rounded bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-700 font-mono text-[10px] text-indigo-600 dark:text-indigo-400 select-all">
+                            powershell -ExecutionPolicy Bypass -File .\scripts\tray-companion.ps1
+                        </code>
                     </div>
 
                     <div v-if="isSupported && permissionState !== 'granted'" class="p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 flex items-center justify-between gap-3">
@@ -559,7 +592,7 @@ const submitSettings = () => {
                         Briefings & Default Deadline Alarms
                     </h3>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         <div class="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 space-y-2.5">
                             <label class="inline-flex items-center gap-2 cursor-pointer font-semibold text-neutral-900 dark:text-white">
                                 <input type="checkbox" v-model="settingForm.daily_briefing_enabled" class="rounded text-indigo-600" />
@@ -569,6 +602,21 @@ const submitSettings = () => {
                                 <label class="block text-[11px] text-neutral-500 mb-1">Delivery Time (Local)</label>
                                 <input
                                     v-model="settingForm.daily_briefing_time"
+                                    type="time"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
+                                />
+                            </div>
+                        </div>
+
+                        <div class="p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/70 dark:border-neutral-800 space-y-2.5">
+                            <label class="inline-flex items-center gap-2 cursor-pointer font-semibold text-neutral-900 dark:text-white">
+                                <input type="checkbox" v-model="settingForm.evening_checkin_nudge_enabled" class="rounded text-indigo-600" />
+                                <span>Evening Habit Check-In Nudge</span>
+                            </label>
+                            <div>
+                                <label class="block text-[11px] text-neutral-500 mb-1">Gentle Nudge Time (If Unlogged)</label>
+                                <input
+                                    v-model="settingForm.evening_checkin_nudge_time"
                                     type="time"
                                     class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-700 dark:bg-neutral-900 dark:text-white"
                                 />

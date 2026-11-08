@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AnalyticsController;
 use App\Http\Controllers\BadHabitController;
 use App\Http\Controllers\BriefingController;
 use App\Http\Controllers\CalendarController;
@@ -43,24 +44,27 @@ Route::get('/calendar/feed/{token}.ics', [CalendarFeedController::class, 'feed']
     ->name('calendar.feed');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {
-    // 1. Dashboard & Briefings
+    // 1. Dashboard, Briefings & Personal Analytics
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
     Route::get('/briefings', [BriefingController::class, 'index'])->name('briefings.index');
     Route::post('/briefings/send-daily', [BriefingController::class, 'sendDaily'])->name('briefings.send-daily');
     Route::post('/briefings/send-weekly', [BriefingController::class, 'sendWeekly'])->name('briefings.send-weekly');
+    Route::get('/analytics', [AnalyticsController::class, 'index'])->name('analytics.index');
 
-    // 2. My Day (Daily Planning)
+    // 2. My Day (Daily Planning & Time-Blocking)
     Route::get('/my-day', [DailyPlanController::class, 'index'])->name('my-day.index');
     Route::put('/my-day/{dailyPlan}', [DailyPlanController::class, 'updatePlan'])->name('my-day.update');
     Route::post('/my-day/{dailyPlan}/tasks', [DailyPlanController::class, 'addTask'])->name('my-day.add-task');
     Route::post('/my-day/{dailyPlan}/tasks/{task}/priority', [DailyPlanController::class, 'togglePriority'])->name('my-day.toggle-priority');
+    Route::patch('/my-day/{dailyPlan}/tasks/{task}/time-block', [DailyPlanController::class, 'updateTimeBlock'])->name('my-day.time-block');
     Route::delete('/my-day/{dailyPlan}/tasks/{task}', [DailyPlanController::class, 'removeTask'])->name('my-day.remove-task');
     Route::post('/my-day/{dailyPlan}/reorder', [DailyPlanController::class, 'reorder'])->name('my-day.reorder');
     Route::post('/tasks/{task}/reschedule', [DailyPlanController::class, 'rescheduleTask'])->name('tasks.reschedule');
 
-    // 3. Tasks & Kanban
+    // 3. Tasks, Dependencies & Quick Capture
     Route::get('/tasks', [TaskController::class, 'index'])->name('tasks.index');
     Route::post('/tasks', [TaskController::class, 'store'])->name('tasks.store');
+    Route::post('/tasks/quick-capture', [TaskController::class, 'quickCapture'])->name('tasks.quick-capture');
     Route::put('/tasks/{task}', [TaskController::class, 'update'])->name('tasks.update');
     Route::patch('/tasks/{task}/status', [TaskController::class, 'updateStatus'])->name('tasks.update-status');
     Route::post('/tasks/{task}/toggle', [TaskController::class, 'toggleStatus'])->name('tasks.toggle');
@@ -143,11 +147,13 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     // 13. Settings & Data Management / Automated Backups
     Route::get('/settings', [SettingController::class, 'index'])->name('settings.index');
     Route::put('/settings', [SettingController::class, 'update'])->name('settings.update');
+    Route::post('/settings/test-windows-toast', [SettingController::class, 'testWindowsToast'])->name('settings.test-windows-toast');
     Route::get('/settings/data', [DataExportImportController::class, 'index'])->name('settings.data');
     Route::get('/settings/export/json', [DataExportImportController::class, 'exportJson'])->name('settings.export.json');
     Route::get('/settings/export/tasks-csv', [DataExportImportController::class, 'exportTasksCsv'])->name('settings.export.tasks-csv');
     Route::get('/settings/backup/database', [DataExportImportController::class, 'downloadDatabaseBackup'])->name('settings.backup.database');
     Route::post('/settings/backups/create', [DataExportImportController::class, 'createManualBackup'])->name('settings.backups.create');
+    Route::match(['post', 'put'], '/settings/backups/secondary', [DataExportImportController::class, 'updateSecondaryBackupConfig'])->name('settings.backups.secondary');
     Route::get('/settings/backups/{filename}/download', [DataExportImportController::class, 'downloadManagedBackup'])
         ->where('filename', '[A-Za-z0-9._-]+')
         ->name('settings.backups.download');

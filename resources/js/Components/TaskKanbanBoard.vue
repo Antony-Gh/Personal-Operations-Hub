@@ -13,7 +13,11 @@ import {
     Repeat,
     Edit3,
     AlertCircle,
+    Lock,
 } from 'lucide-vue-next';
+
+const incompleteBlockers = (task: Task) =>
+    (task.blocked_by_tasks || []).filter((b) => b.status !== 'completed');
 
 const props = defineProps<{
     tasks: Task[];
@@ -203,7 +207,10 @@ const priorityBadgeClass = (p: string) => {
                     </div>
 
                     <!-- Category & Project -->
-                    <div v-if="task.category || task.project || task.is_recurring" class="flex flex-wrap items-center gap-1.5 mt-2">
+                    <div
+                        v-if="task.category || task.project || task.is_recurring || incompleteBlockers(task).length > 0"
+                        class="flex flex-wrap items-center gap-1.5 mt-2"
+                    >
                         <span
                             v-if="task.category"
                             class="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-300"
@@ -226,6 +233,15 @@ const priorityBadgeClass = (p: string) => {
                             title="Recurring task"
                         >
                             <Repeat class="w-3 h-3" />
+                        </span>
+
+                        <span
+                            v-if="incompleteBlockers(task).length > 0"
+                            class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-900"
+                            :title="'Blocked by: ' + incompleteBlockers(task).map((b) => b.title).join(', ')"
+                        >
+                            <Lock class="w-2.5 h-2.5" />
+                            Blocked ({{ incompleteBlockers(task).length }})
                         </span>
                     </div>
 

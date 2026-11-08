@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Services\RecurringTaskService;
 use App\Services\ReminderService;
+use App\Services\TaskDependencyService;
 use App\Support\UserDateTime;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -106,6 +107,18 @@ class Task extends Model
         return $this->belongsToMany(Tag::class, 'task_tag');
     }
 
+    public function blockedByTasks(): BelongsToMany
+    {
+        return $this->belongsToMany(self::class, 'task_dependencies', 'task_id', 'depends_on_task_id')
+            ->withTimestamps();
+    }
+
+    public function blockingTasks(): BelongsToMany
+    {
+        return $this->belongsToMany(self::class, 'task_dependencies', 'depends_on_task_id', 'task_id')
+            ->withTimestamps();
+    }
+
     public function dailyPlanTasks(): HasMany
     {
         return $this->hasMany(DailyPlanTask::class);
@@ -188,6 +201,8 @@ class Task extends Model
                 'status' => 'completed',
                 'completed_at' => now(),
             ]);
+
+            app(TaskDependencyService::class)->handleTaskCompleted($this);
 
             if ($this->is_recurring) {
                 return app(RecurringTaskService::class)->generateNextOccurrence($this);

@@ -15,6 +15,8 @@ class DailyPlanTask extends Model
         'task_id',
         'is_priority',
         'sort_order',
+        'scheduled_start_time',
+        'scheduled_end_time',
     ];
 
     protected function casts(): array

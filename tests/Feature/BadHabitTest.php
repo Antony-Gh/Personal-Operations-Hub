@@ -231,4 +231,3 @@ test('users cannot modify check in archive or restore another users bad habit', 
 
     expect($badHabit->fresh()->name)->toBe('Private Habit to Break');
 });
-

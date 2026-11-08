@@ -56,7 +56,7 @@ class ProjectController extends Controller
         $project->load([
             'category',
             'milestones' => fn ($q) => $q->orderBy('sort_order'),
-            'tasks' => fn ($q) => $q->with(['tags', 'checklists'])->orderByPriority()->orderBy('due_date'),
+            'tasks' => fn ($q) => $q->with(['tags', 'checklists', 'blockedByTasks:id,title,status,priority'])->orderByPriority()->orderBy('due_date'),
         ]);
 
         $project->total_tasks_count = $project->tasks->count();

@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import { PageProps, TaskReminderPreset } from '@/types';
 import { getLocalDateString } from '@/utils/date';
+import { previewNaturalTaskTokens } from '@/utils/naturalTaskParser';
 import {
     X,
     CheckSquare,
@@ -10,6 +11,7 @@ import {
     Tag as TagIcon,
     Smartphone,
     Plus,
+    Sparkles,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -54,7 +56,12 @@ const taskForm = useForm({
     reminder_preset: ((page.props.auth.user?.setting?.default_task_reminder_preset as TaskReminderPreset) || 'none') as TaskReminderPreset,
     estimated_duration: page.props.auth.user?.setting?.default_task_duration || 30,
     next_action: '',
+    smart_parse: true,
 });
+
+const smartPreview = computed(() =>
+    taskForm.smart_parse ? previewNaturalTaskTokens(taskForm.title) : { cleanTitle: taskForm.title, tokens: [] }
+);
 
 const submitTask = () => {
     taskForm.post(route('tasks.store'), {
@@ -184,14 +191,38 @@ const submitPhone = () => {
                 <!-- Task Form -->
                 <form v-if="activeTab === 'task'" @submit.prevent="submitTask" class="space-y-4">
                     <div>
-                        <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Task Title</label>
+                        <div class="flex items-center justify-between mb-1">
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Task Title</label>
+                            <label class="inline-flex items-center gap-1.5 text-[11px] font-medium text-indigo-600 dark:text-indigo-400 cursor-pointer select-none">
+                                <input
+                                    v-model="taskForm.smart_parse"
+                                    type="checkbox"
+                                    class="rounded border-gray-300 dark:border-gray-700 text-indigo-600 focus:ring-indigo-500 h-3.5 w-3.5"
+                                />
+                                <Sparkles class="w-3 h-3" />
+                                Smart Shorthand
+                            </label>
+                        </div>
                         <input
                             v-model="taskForm.title"
                             type="text"
                             required
-                            placeholder="What needs to be done?"
+                            :placeholder="taskForm.smart_parse ? 'e.g. Finish OS lab tomorrow 17:00 !high #University ~90m' : 'What needs to be done?'"
                             class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
                         />
+                        <div v-if="taskForm.smart_parse && smartPreview.tokens.length > 0" class="mt-2 flex flex-wrap items-center gap-1.5">
+                            <span class="text-[11px] text-gray-500 dark:text-gray-400">Parsed:</span>
+                            <span
+                                v-for="(tok, idx) in smartPreview.tokens"
+                                :key="idx"
+                                class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-indigo-50 text-indigo-700 dark:bg-indigo-950/70 dark:text-indigo-300 border border-indigo-200/70 dark:border-indigo-800/70"
+                            >
+                                {{ tok.label }}
+                            </span>
+                        </div>
+                        <p v-else-if="taskForm.smart_parse" class="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                            Supports <code class="font-mono">!high</code>, <code class="font-mono">~90m</code>, <code class="font-mono">#Area</code>, <code class="font-mono">+Project</code>, <code class="font-mono">tomorrow 17:00</code>
+                        </p>
                     </div>
 
                     <div class="grid grid-cols-2 gap-3">

@@ -10,6 +10,7 @@ use App\Services\DatabaseBackupService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -32,8 +33,44 @@ class DataExportImportController extends Controller
                 'backup_enabled' => $setting->backup_enabled,
                 'backup_retention_days' => $setting->backup_retention_days,
                 'directory' => $backupService->backupDirectory(),
+                'secondary_backup_enabled' => $setting->secondary_backup_enabled,
+                'secondary_backup_path' => $setting->secondary_backup_path,
+                'backup_encryption_enabled' => $setting->backup_encryption_enabled,
+                'has_backup_encryption_password' => $setting->has_backup_encryption_password,
             ],
         ]);
+    }
+
+    public function updateSecondaryBackupConfig(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'secondary_backup_enabled' => 'required|boolean',
+            'secondary_backup_path' => 'nullable|required_if:secondary_backup_enabled,true|string|max:500',
+            'backup_encryption_enabled' => 'required|boolean',
+            'backup_encryption_password' => 'nullable|string|min:6|max:255',
+        ]);
+
+        $setting = $request->user()->ensureSetting();
+
+        if ($validated['backup_encryption_enabled'] && empty($validated['backup_encryption_password']) && ! $setting->has_backup_encryption_password) {
+            return back()->withErrors([
+                'backup_encryption_password' => 'Provide an encryption passphrase (min 6 characters) when enabling AES-256 backup encryption.',
+            ]);
+        }
+
+        $updates = [
+            'secondary_backup_enabled' => (bool) $validated['secondary_backup_enabled'],
+            'secondary_backup_path' => $validated['secondary_backup_path'] ?? null,
+            'backup_encryption_enabled' => (bool) $validated['backup_encryption_enabled'],
+        ];
+
+        if (! empty($validated['backup_encryption_password'])) {
+            $updates['backup_encryption_password_encrypted'] = Crypt::encryptString($validated['backup_encryption_password']);
+        }
+
+        $setting->update($updates);
+
+        return back()->with('success', 'Secondary backup & AES-256 encryption settings saved.');
     }
 
     public function exportJson(Request $request): StreamedResponse
@@ -318,6 +355,8 @@ class DataExportImportController extends Controller
                         'category' => $bhData['category'] ?? 'Digital Discipline',
                         'trigger_cue' => $bhData['trigger_cue'] ?? null,
                         'replacement_action' => $bhData['replacement_action'] ?? null,
+                        'minutes_saved_per_day' => (int) ($bhData['minutes_saved_per_day'] ?? 0),
+                        'money_saved_per_day' => (float) ($bhData['money_saved_per_day'] ?? 0),
                         'has_daily_limit' => (bool) ($bhData['has_daily_limit'] ?? false),
                         'daily_limit_value' => $bhData['daily_limit_value'] ?? null,
                         'daily_limit_unit' => $bhData['daily_limit_unit'] ?? 'times',

@@ -20,11 +20,21 @@ import {
     AlertTriangle,
     MessageSquareText,
     Gauge,
+    Clock,
+    DollarSign,
+    Link2,
+    Sparkles,
+    BarChart3,
     X,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
     badHabits: BadHabit[];
+    availableHabits?: {
+        id: number;
+        name: string;
+        category: string;
+    }[];
     archivedBadHabits?: {
         id: number;
         name: string;
@@ -39,6 +49,16 @@ const props = defineProps<{
         stayed_clean_today_count: number;
         slipped_today_count: number;
         total_active_bad_habits: number;
+        total_minutes_reclaimed?: number;
+        total_hours_reclaimed?: number;
+        total_money_reclaimed?: number;
+    };
+    triggerAnalytics?: {
+        total_logged_slips: number;
+        top_triggers: { trigger: string; count: number; share_percent: number }[];
+        day_of_week_slips: { day: string; count: number; share_percent: number }[];
+        peak_day?: { day: string; count: number; share_percent: number } | null;
+        headline_insight: string;
     };
     heatmap?: HabitHeatmapType;
     todayDate: string;
@@ -56,6 +76,9 @@ const badHabitForm = useForm({
     category: 'Digital Discipline',
     trigger_cue: '',
     replacement_action: '',
+    linked_habit_id: '' as string | number,
+    minutes_saved_per_day: 0,
+    money_saved_per_day: 0,
     has_daily_limit: false,
     daily_limit_value: 2 as number | null,
     daily_limit_unit: 'times' as 'times' | 'minutes',
@@ -86,6 +109,9 @@ const openCreateModal = () => {
     badHabitForm.reset();
     badHabitForm.clearErrors();
     badHabitForm.category = 'Digital Discipline';
+    badHabitForm.linked_habit_id = '';
+    badHabitForm.minutes_saved_per_day = 0;
+    badHabitForm.money_saved_per_day = 0;
     badHabitForm.has_daily_limit = false;
     badHabitForm.daily_limit_value = 2;
     badHabitForm.daily_limit_unit = 'times';
@@ -101,6 +127,9 @@ const openEditModal = (bh: BadHabit) => {
     badHabitForm.category = bh.category || 'Digital Discipline';
     badHabitForm.trigger_cue = bh.trigger_cue || '';
     badHabitForm.replacement_action = bh.replacement_action || '';
+    badHabitForm.linked_habit_id = bh.linked_habit_id || '';
+    badHabitForm.minutes_saved_per_day = bh.minutes_saved_per_day ?? 0;
+    badHabitForm.money_saved_per_day = bh.money_saved_per_day ?? 0;
     badHabitForm.has_daily_limit = bh.has_daily_limit;
     badHabitForm.daily_limit_value = bh.daily_limit_value ?? 2;
     badHabitForm.daily_limit_unit = bh.daily_limit_unit || 'times';
@@ -128,10 +157,10 @@ const submitBadHabit = () => {
     }
 };
 
-const markClean = (badHabitId: number, date: string) => {
+const markClean = (badHabitId: number, date: string, logReplacement = false) => {
     router.post(
         route('bad-habits.check-in', badHabitId),
-        { date, status: 'clean' },
+        { date, status: 'clean', log_replacement: logReplacement },
         { preserveScroll: true }
     );
 };
@@ -260,7 +289,7 @@ const toggleReflections = (id: number) => {
             </div>
 
             <!-- Analytics Summary Cards -->
-            <div v-if="summary" class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div v-if="summary" class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <div class="bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
                     <div class="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
                         <span class="text-xs font-medium">Top Clean Streak</span>
@@ -306,6 +335,91 @@ const toggleReflections = (id: number) => {
                     <p class="text-[11px] text-neutral-400 mt-1">
                         {{ summary.average_weekly_clean_rate }}% clean this week
                     </p>
+                </div>
+
+                <div class="col-span-2 lg:col-span-1 bg-white dark:bg-neutral-900 p-4 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-xs">
+                    <div class="flex items-center justify-between text-neutral-500 dark:text-neutral-400 mb-1.5">
+                        <span class="text-xs font-medium">Reclaimed Life</span>
+                        <Clock class="w-4 h-4 text-emerald-500" />
+                    </div>
+                    <div class="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                        {{ summary.total_hours_reclaimed ?? 0 }}h
+                    </div>
+                    <p class="text-[11px] text-neutral-400 mt-1">
+                        ${{ (summary.total_money_reclaimed ?? 0).toFixed(2) }} saved on clean days
+                    </p>
+                </div>
+            </div>
+
+            <!-- Trigger & Day-of-Week Slip Pattern Intelligence -->
+            <div
+                v-if="triggerAnalytics && badHabits.length > 0"
+                class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 shadow-xs space-y-4"
+            >
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                    <div class="flex items-center gap-2">
+                        <BarChart3 class="w-4 h-4 text-indigo-500" />
+                        <h3 class="text-sm font-bold text-neutral-900 dark:text-white">
+                            Trigger & Slip Pattern Intelligence
+                        </h3>
+                    </div>
+                    <span class="text-[11px] font-medium px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300">
+                        {{ triggerAnalytics.headline_insight }}
+                    </span>
+                </div>
+
+                <div v-if="triggerAnalytics.total_logged_slips > 0" class="grid grid-cols-1 md:grid-cols-2 gap-5 pt-1">
+                    <!-- Top Triggers -->
+                    <div class="space-y-2">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                            Most Common Triggers ({{ triggerAnalytics.total_logged_slips }} logged slips)
+                        </p>
+                        <div v-if="triggerAnalytics.top_triggers.length === 0" class="text-xs text-neutral-400">
+                            Add trigger tags when logging slips to uncover root causes.
+                        </div>
+                        <div v-else class="space-y-2">
+                            <div
+                                v-for="t in triggerAnalytics.top_triggers"
+                                :key="t.trigger"
+                                class="space-y-1 text-xs"
+                            >
+                                <div class="flex items-center justify-between">
+                                    <span class="font-medium text-neutral-700 dark:text-neutral-200 truncate">{{ t.trigger }}</span>
+                                    <span class="text-[11px] font-mono text-neutral-500">{{ t.count }} ({{ t.share_percent }}%)</span>
+                                </div>
+                                <div class="h-1.5 rounded-full bg-neutral-100 dark:bg-neutral-800 overflow-hidden">
+                                    <div
+                                        class="h-full rounded-full bg-amber-500"
+                                        :style="{ width: `${Math.max(6, t.share_percent)}%` }"
+                                    ></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Day-of-Week Distribution -->
+                    <div class="space-y-2">
+                        <p class="text-[11px] font-semibold uppercase tracking-wider text-neutral-400">
+                            Day-of-Week Vulnerability
+                        </p>
+                        <div class="grid grid-cols-7 gap-2 items-end h-24 pt-2">
+                            <div
+                                v-for="d in triggerAnalytics.day_of_week_slips"
+                                :key="d.day"
+                                class="flex flex-col items-center justify-end h-full gap-1"
+                            >
+                                <span class="text-[10px] font-mono text-neutral-400">{{ d.count }}</span>
+                                <div class="w-full bg-neutral-100 dark:bg-neutral-800 rounded-md h-14 flex items-end overflow-hidden">
+                                    <div
+                                        class="w-full rounded-md transition-all"
+                                        :class="d.count > 0 ? 'bg-rose-500/80' : 'bg-transparent'"
+                                        :style="{ height: `${d.count > 0 ? Math.max(15, d.share_percent) : 0}%` }"
+                                    ></div>
+                                </div>
+                                <span class="text-[10px] font-medium text-neutral-500">{{ d.day }}</span>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -366,6 +480,28 @@ const toggleReflections = (id: number) => {
                                 <span class="text-[11px] text-neutral-400">
                                     Best: {{ bh.best_clean_streak || 0 }}d • Total clean: {{ bh.total_clean_days || 0 }}d
                                 </span>
+                                <span
+                                    v-if="(bh.minutes_reclaimed || 0) > 0"
+                                    class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-medium"
+                                >
+                                    <Clock class="w-3 h-3" />
+                                    +{{ Math.round(((bh.minutes_reclaimed || 0) / 60) * 10) / 10 }}h reclaimed
+                                </span>
+                                <span
+                                    v-if="(bh.money_reclaimed || 0) > 0"
+                                    class="inline-flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-medium"
+                                >
+                                    <DollarSign class="w-3 h-3" />
+                                    ${{ (bh.money_reclaimed || 0).toFixed(2) }} saved
+                                </span>
+                                <span
+                                    v-if="bh.linked_habit"
+                                    class="inline-flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 font-medium"
+                                    :title="`Linked replacement Good Habit (${bh.linked_habit.today_status})`"
+                                >
+                                    <Link2 class="w-3 h-3" />
+                                    Instead: {{ bh.linked_habit.name }}
+                                </span>
                             </div>
                             <p v-if="bh.description" class="text-xs text-neutral-500 dark:text-neutral-400">
                                 {{ bh.description }}
@@ -375,8 +511,24 @@ const toggleReflections = (id: number) => {
                         <!-- Today Check-In Controls -->
                         <div class="flex items-center gap-2 flex-wrap shrink-0">
                             <button
+                                v-if="bh.linked_habit"
                                 type="button"
-                                @click="markClean(bh.id, todayDate)"
+                                @click="markClean(bh.id, todayDate, true)"
+                                class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition border"
+                                :class="
+                                    bh.today_status === 'clean' && bh.linked_habit.today_status === 'completed'
+                                        ? 'bg-purple-600 border-purple-600 text-white shadow-xs'
+                                        : 'bg-purple-50 dark:bg-purple-950/40 border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/50'
+                                "
+                                :title="`Stay Clean AND mark '${bh.linked_habit.name}' completed today`"
+                            >
+                                <Sparkles class="w-3.5 h-3.5" />
+                                <span>Clean + Log Replacement</span>
+                            </button>
+
+                            <button
+                                type="button"
+                                @click="markClean(bh.id, todayDate, false)"
                                 class="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-medium transition"
                                 :class="
                                     bh.today_status === 'clean'
@@ -721,6 +873,48 @@ const toggleReflections = (id: number) => {
                             placeholder="e.g., Dock phone across room and read 5 pages offline"
                             class="w-full rounded-xl border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white text-sm"
                         />
+                    </div>
+
+                    <div v-if="availableHabits && availableHabits.length > 0">
+                        <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                            Link to Existing Good Habit Replacement (Optional 1-Click Check-In)
+                        </label>
+                        <select
+                            v-model="badHabitForm.linked_habit_id"
+                            class="w-full rounded-xl border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white text-sm"
+                        >
+                            <option value="">No linked Good Habit</option>
+                            <option v-for="h in availableHabits" :key="h.id" :value="h.id">
+                                {{ h.name }} ({{ h.category }})
+                            </option>
+                        </select>
+                    </div>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Est. Minutes Reclaimed per Clean Day
+                            </label>
+                            <input
+                                v-model.number="badHabitForm.minutes_saved_per_day"
+                                type="number"
+                                min="0"
+                                max="1440"
+                                class="w-full rounded-xl border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white text-sm"
+                            />
+                        </div>
+                        <div>
+                            <label class="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
+                                Est. Money Saved per Clean Day ($)
+                            </label>
+                            <input
+                                v-model.number="badHabitForm.money_saved_per_day"
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                class="w-full rounded-xl border-neutral-300 dark:border-neutral-700 dark:bg-neutral-800 dark:text-white text-sm"
+                            />
+                        </div>
                     </div>
 
                     <div>

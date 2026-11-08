@@ -350,15 +350,16 @@ class BriefingService
     }
 
     /**
-     * Dispatch scheduled Daily Briefings and Weekly Digests respecting user timezones, quiet hours, and deduplication.
+     * Dispatch scheduled Daily Briefings, Weekly Digests, and Evening Habit Nudges respecting user timezones, quiet hours, and deduplication.
      *
-     * @return array{daily_sent: int, weekly_sent: int}
+     * @return array{daily_sent: int, weekly_sent: int, nudge_sent: int}
      */
     public function dispatchScheduledBriefings(?Carbon $nowUtc = null): array
     {
         $referenceUtc = ($nowUtc ?? now())->copy()->utc();
         $dailySent = 0;
         $weeklySent = 0;
+        $nudgeSent = 0;
 
         $users = User::with('setting')->get();
 
@@ -405,12 +406,78 @@ class BriefingService
                     }
                 }
             }
+
+            if ($setting->evening_checkin_nudge_enabled && $setting->isNotificationCategoryEnabled('habit_reminders')) {
+                $nudgeHm = substr($setting->evening_checkin_nudge_time ?: '21:00', 0, 5);
+                $alreadyNudgedToday = $setting->last_evening_nudge_at !== null
+                    && $setting->last_evening_nudge_at->copy()->setTimezone($tz)->toDateString() === $localNow->toDateString();
+
+                if (! $alreadyNudgedToday && $localNow->format('H:i') >= $nudgeHm) {
+                    if ($this->sendEveningHabitNudgeNotification($user, $localNow->toDateString(), $referenceUtc)) {
+                        $nudgeSent++;
+                    }
+                }
+            }
         }
 
         return [
             'daily_sent' => $dailySent,
             'weekly_sent' => $weeklySent,
+            'nudge_sent' => $nudgeSent,
         ];
+    }
+
+    public function sendEveningHabitNudgeNotification(User $user, ?string $dateStr = null, ?Carbon $referenceUtc = null): bool
+    {
+        $todayStr = $dateStr ?? UserDateTime::todayDateString($user);
+        $dedupKey = "evening_habit_nudge:{$user->id}:{$todayStr}";
+
+        if ($user->notifications()->where('data->dedup_key', $dedupKey)->exists()) {
+            return false;
+        }
+
+        $activeGoodIds = Habit::where('user_id', $user->id)->active()->pluck('id');
+        $loggedGoodIds = HabitCheckIn::where('user_id', $user->id)
+            ->where('date', $todayStr)
+            ->whereIn('habit_id', $activeGoodIds)
+            ->pluck('habit_id');
+        $unloggedGoodCount = max(0, $activeGoodIds->diff($loggedGoodIds)->count());
+
+        $activeBadIds = BadHabit::where('user_id', $user->id)->active()->pluck('id');
+        $loggedBadIds = BadHabitCheckIn::where('user_id', $user->id)
+            ->where('date', $todayStr)
+            ->whereIn('bad_habit_id', $activeBadIds)
+            ->pluck('bad_habit_id');
+        $unloggedBadCount = max(0, $activeBadIds->diff($loggedBadIds)->count());
+
+        if (($unloggedGoodCount + $unloggedBadCount) === 0) {
+            return false;
+        }
+
+        $parts = [];
+        if ($unloggedGoodCount > 0) {
+            $parts[] = "{$unloggedGoodCount} good habit(s)";
+        }
+        if ($unloggedBadCount > 0) {
+            $parts[] = "{$unloggedBadCount} bad-habit clean check-in(s)";
+        }
+
+        $actionUrl = $unloggedBadCount > 0 && $unloggedGoodCount === 0 ? '/bad-habits' : '/habits';
+
+        $user->notify(new OperationalNotification(
+            category: 'habit_reminders',
+            title: 'Evening Check-In Nudge',
+            message: 'Still unlogged today: '.implode(' and ', $parts).'. Take 30 seconds to close out your streaks.',
+            actionUrl: $actionUrl,
+            entityType: 'habit_nudge',
+            dedupKey: $dedupKey,
+        ));
+
+        $user->ensureSetting()->update([
+            'last_evening_nudge_at' => ($referenceUtc ?? now())->copy()->utc(),
+        ]);
+
+        return true;
     }
 
     public function sendDailyBriefingNotification(User $user, ?string $dateStr = null, ?Carbon $referenceUtc = null): bool

@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Habit;
 use App\Models\UserSetting;
 use App\Services\ReminderService;
+use App\Services\WindowsToastService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -75,9 +76,12 @@ class SettingController extends Controller
             'focus_short_break_minutes' => 'sometimes|integer|min:1|max:60',
             'focus_long_break_minutes' => 'sometimes|integer|min:1|max:90',
             'focus_auto_start_breaks' => 'sometimes|boolean',
+            'windows_toast_enabled' => 'sometimes|boolean',
+            'evening_checkin_nudge_enabled' => 'sometimes|boolean',
+            'evening_checkin_nudge_time' => ['sometimes', 'regex:/^\d{2}:\d{2}(:\d{2})?$/'],
         ]);
 
-        foreach (['quiet_hours_start', 'quiet_hours_end', 'daily_briefing_time', 'weekly_digest_time'] as $timeField) {
+        foreach (['quiet_hours_start', 'quiet_hours_end', 'daily_briefing_time', 'weekly_digest_time', 'evening_checkin_nudge_time'] as $timeField) {
             if (! empty($validated[$timeField])) {
                 $validated[$timeField] = substr((string) $validated[$timeField], 0, 5);
             }
@@ -111,5 +115,24 @@ class SettingController extends Controller
         }
 
         return back()->with('success', 'Settings updated successfully.');
+    }
+
+    public function testWindowsToast(Request $request, WindowsToastService $toastService): RedirectResponse
+    {
+        $sent = $toastService->notifyIfEnabled(
+            user: $request->user(),
+            title: 'Personal Operations Hub — Native Windows Toast',
+            message: 'Browserless Windows 10/11 Action Center alerts are active.',
+            category: 'system_notifications',
+            isCritical: true,
+            force: true,
+        );
+
+        return back()->with(
+            'success',
+            $sent
+                ? 'Native Windows Action Center toast dispatched.'
+                : 'Windows Toast test processed (no interactive Windows desktop session detected).'
+        );
     }
 }

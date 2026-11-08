@@ -53,15 +53,25 @@ class UserSetting extends Model
         'calendar_feed_enabled',
         'calendar_feed_token_hash',
         'calendar_feed_token_encrypted',
+        'windows_toast_enabled',
+        'evening_checkin_nudge_enabled',
+        'evening_checkin_nudge_time',
+        'last_evening_nudge_at',
+        'secondary_backup_enabled',
+        'secondary_backup_path',
+        'backup_encryption_enabled',
+        'backup_encryption_password_encrypted',
     ];
 
     protected $hidden = [
         'calendar_feed_token_hash',
         'calendar_feed_token_encrypted',
+        'backup_encryption_password_encrypted',
     ];
 
     protected $appends = [
         'has_calendar_feed_token',
+        'has_backup_encryption_password',
     ];
 
     protected function casts(): array
@@ -91,6 +101,11 @@ class UserSetting extends Model
             'focus_long_break_minutes' => 'integer',
             'focus_auto_start_breaks' => 'boolean',
             'calendar_feed_enabled' => 'boolean',
+            'windows_toast_enabled' => 'boolean',
+            'evening_checkin_nudge_enabled' => 'boolean',
+            'last_evening_nudge_at' => 'datetime',
+            'secondary_backup_enabled' => 'boolean',
+            'backup_encryption_enabled' => 'boolean',
         ];
     }
 
@@ -102,6 +117,24 @@ class UserSetting extends Model
     public function getHasCalendarFeedTokenAttribute(): bool
     {
         return ! empty($this->calendar_feed_token_hash);
+    }
+
+    public function getHasBackupEncryptionPasswordAttribute(): bool
+    {
+        return ! empty($this->backup_encryption_password_encrypted);
+    }
+
+    public function decryptedBackupEncryptionPassword(): ?string
+    {
+        if (empty($this->backup_encryption_password_encrypted)) {
+            return null;
+        }
+
+        try {
+            return Crypt::decryptString($this->backup_encryption_password_encrypted);
+        } catch (DecryptException) {
+            return null;
+        }
     }
 
     /**
@@ -188,6 +221,12 @@ class UserSetting extends Model
             'focus_long_break_minutes' => 15,
             'focus_auto_start_breaks' => false,
             'calendar_feed_enabled' => true,
+            'windows_toast_enabled' => false,
+            'evening_checkin_nudge_enabled' => true,
+            'evening_checkin_nudge_time' => '21:00',
+            'secondary_backup_enabled' => false,
+            'secondary_backup_path' => null,
+            'backup_encryption_enabled' => false,
         ];
     }
 

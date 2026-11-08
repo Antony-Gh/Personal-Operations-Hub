@@ -24,14 +24,19 @@ class DailyPlanController extends Controller
         $tz = UserDateTime::resolveTimezone($user);
         $date = $request->input('date', $user->localTodayDate());
 
-        $dailyPlan = DailyPlan::firstOrCreate(
-            ['user_id' => $user->id, 'date' => $date],
-            [
+        $dailyPlan = DailyPlan::where('user_id', $user->id)
+            ->whereDate('date', $date)
+            ->first();
+
+        if (! $dailyPlan) {
+            $dailyPlan = DailyPlan::create([
+                'user_id' => $user->id,
+                'date' => $date,
                 'fallback_plan' => '',
                 'personal_recovery_notes' => '',
                 'notes' => '',
-            ]
-        );
+            ]);
+        }
 
         $dailyPlan->load([
             'planTasks.task.category',
@@ -47,6 +52,8 @@ class DailyPlanController extends Controller
                 $task->is_priority = $pt->is_priority;
                 $task->plan_task_id = $pt->id;
                 $task->plan_sort_order = $pt->sort_order;
+                $task->scheduled_start_time = $pt->scheduled_start_time;
+                $task->scheduled_end_time = $pt->scheduled_end_time;
             }
 
             return $task;
@@ -81,7 +88,40 @@ class DailyPlanController extends Controller
                 $dayLocal->copy()->endOfDay()->utc(),
             ])
             ->orderBy('start_time', 'asc')
-            ->get();
+            ->get()
+            ->map(function (CalendarEvent $evt) use ($tz): CalendarEvent {
+                if ($evt->start_time) {
+                    $evt->local_start_hm = $evt->start_time->copy()->setTimezone($tz)->format('H:i');
+                }
+                if ($evt->end_time) {
+                    $evt->local_end_hm = $evt->end_time->copy()->setTimezone($tz)->format('H:i');
+                }
+
+                return $evt;
+            });
+
+        // Capacity & Overbooking Calculation (12-hour productive window 08:00-20:00 = 720m)
+        $workdayMinutes = 720;
+        $committedEventMinutes = (int) $fixedCommitments->sum(function (CalendarEvent $evt): int {
+            if ($evt->all_day || ! $evt->start_time || ! $evt->end_time) {
+                return 0;
+            }
+
+            return max(0, (int) $evt->start_time->diffInMinutes($evt->end_time, false));
+        });
+
+        $availableFreeMinutes = max(0, $workdayMinutes - $committedEventMinutes);
+        $defaultTaskDuration = (int) ($user->setting?->default_task_duration ?? 30);
+
+        $plannedTaskMinutes = (int) $plannedTasks
+            ->filter(fn (Task $t): bool => $t->status !== 'completed')
+            ->sum(fn (Task $t): int => max(5, (int) ($t->estimated_duration ?: $defaultTaskDuration)));
+
+        $overbookedByMinutes = max(0, $plannedTaskMinutes - $availableFreeMinutes);
+        $isOverbooked = $plannedTaskMinutes > $availableFreeMinutes;
+        $utilizationPercent = $availableFreeMinutes > 0
+            ? min(999, (int) round(($plannedTaskMinutes / $availableFreeMinutes) * 100))
+            : ($plannedTaskMinutes > 0 ? 100 : 0);
 
         // Phone usage for this date
         $phoneUsage = PhoneUsageLog::where('user_id', $user->id)
@@ -96,6 +136,15 @@ class DailyPlanController extends Controller
             'unplannedDueTasks' => $unplannedDueTasks,
             'candidateTasks' => $candidateTasks,
             'fixedCommitments' => $fixedCommitments,
+            'capacity' => [
+                'workday_minutes' => $workdayMinutes,
+                'committed_event_minutes' => $committedEventMinutes,
+                'available_free_minutes' => $availableFreeMinutes,
+                'planned_task_minutes' => $plannedTaskMinutes,
+                'is_overbooked' => $isOverbooked,
+                'overbooked_by_minutes' => $overbookedByMinutes,
+                'utilization_percent' => $utilizationPercent,
+            ],
             'phoneUsage' => $phoneUsage,
             'targetPhoneMinutes' => $user->setting?->phone_usage_target_minutes ?? 60,
         ]);
@@ -216,6 +265,44 @@ class DailyPlanController extends Controller
         });
 
         return back()->with('success', 'Tasks reordered.');
+    }
+
+    public function updateTimeBlock(Request $request, DailyPlan $dailyPlan, Task $task): RedirectResponse
+    {
+        $user = $request->user();
+        if ($dailyPlan->user_id !== $user->id || $task->user_id !== $user->id) {
+            abort(403);
+        }
+
+        $validated = $request->validate([
+            'scheduled_start_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+            'scheduled_end_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
+        ]);
+
+        $planTask = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
+            ->where('task_id', $task->id)
+            ->firstOrFail();
+
+        $startHm = $validated['scheduled_start_time'] ?? null;
+        $endHm = $validated['scheduled_end_time'] ?? null;
+
+        if ($startHm !== null && $endHm === null) {
+            $duration = max(15, (int) ($task->estimated_duration ?: ($user->setting?->default_task_duration ?? 30)));
+            [$h, $m] = array_map('intval', explode(':', $startHm));
+            $totalEndMinutes = min(23 * 60 + 59, ($h * 60) + $m + $duration);
+            $endHm = sprintf('%02d:%02d', intdiv($totalEndMinutes, 60), $totalEndMinutes % 60);
+        }
+
+        if ($startHm === null) {
+            $endHm = null;
+        }
+
+        $planTask->update([
+            'scheduled_start_time' => $startHm,
+            'scheduled_end_time' => $endHm,
+        ]);
+
+        return back()->with('success', $startHm ? "Task time-blocked ({$startHm} – {$endHm})." : 'Time block cleared.');
     }
 
     public function rescheduleTask(Request $request, Task $task): RedirectResponse

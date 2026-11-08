@@ -22,4 +22,3 @@ class BadHabitPolicy
         return $badHabit->user_id === $user->id;
     }
 }
-

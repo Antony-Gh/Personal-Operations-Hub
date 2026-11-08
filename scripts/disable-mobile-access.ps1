@@ -42,11 +42,11 @@ if (-not $NoRestart) {
     $startScript = Join-Path $PSScriptRoot "start-background.ps1"
 
     if (Test-Path $stopScript) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript | Out-Null
+        & $stopScript
     }
     Start-Sleep -Seconds 1
     if (Test-Path $startScript) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript -BindHost "127.0.0.1" -Port $Port | Out-Null
+        & $startScript -BindHost "127.0.0.1" -Port $Port
     }
     Write-Host "  [OK] Background services running bound to 127.0.0.1." -ForegroundColor Green
 }

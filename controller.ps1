@@ -120,10 +120,10 @@ $Operations = @(
         Action               = {
             param($root)
             Write-Host "Stopping existing services..." -ForegroundColor Cyan
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "scripts\stop.ps1") | Out-Null
+            & (Join-Path $root "scripts\stop.ps1")
             Start-Sleep -Seconds 1
             Write-Host "Restarting background runner..." -ForegroundColor Cyan
-            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $root "scripts\start-background.ps1")
+            & (Join-Path $root "scripts\start-background.ps1")
         }
     },
 

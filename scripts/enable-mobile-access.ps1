@@ -73,11 +73,11 @@ if (-not $NoRestart) {
     $startScript = Join-Path $PSScriptRoot "start-background.ps1"
 
     if (Test-Path $stopScript) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript | Out-Null
+        & $stopScript
     }
     Start-Sleep -Seconds 1
     if (Test-Path $startScript) {
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $startScript -BindHost "0.0.0.0" -Port $Port | Out-Null
+        & $startScript -BindHost "0.0.0.0" -Port $Port
     }
     Write-Host "  [OK] Background services running bound to 0.0.0.0." -ForegroundColor Green
 }
@@ -85,10 +85,8 @@ if (-not $NoRestart) {
 Write-Host ""
 
 # 4. Display Connection URLs and QR Code
-$phpExe = Join-Path $ProjectRoot "vendor\..\..\php.exe" # check path or fallback to php
-if (-not (Test-Path $phpExe)) {
-    $phpExe = "php"
-}
+$phpCmd = Get-Command "php" -ErrorAction SilentlyContinue
+$phpExe = if ($phpCmd) { $phpCmd.Source } else { "php" }
 
 try {
     & $phpExe artisan ops:mobile --port=$Port

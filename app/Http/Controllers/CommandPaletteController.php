@@ -100,6 +100,7 @@ class CommandPaletteController extends Controller
                 'title' => $m->title,
                 'is_completed' => $m->is_completed,
                 'due_date' => $m->due_date?->toDateString(),
+                'due_time' => $m->due_time,
                 'project_id' => $m->project_id,
                 'project_name' => $m->project?->name,
                 'url' => "/projects/{$m->project_id}",

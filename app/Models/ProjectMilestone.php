@@ -3,6 +3,8 @@
 namespace App\Models;
 
 use App\Services\ReminderService;
+use App\Support\UserDateTime;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -22,6 +24,10 @@ class ProjectMilestone extends Model
         'is_completed',
         'completed_at',
         'sort_order',
+    ];
+
+    protected $appends = [
+        'formatted_due_time',
     ];
 
     protected function casts(): array
@@ -55,5 +61,23 @@ class ProjectMilestone extends Model
     public function reminders(): MorphMany
     {
         return $this->morphMany(Reminder::class, 'remindable');
+    }
+
+    /**
+     * Get the formatted 12-hour due time with AM/PM (e.g., 2:30 PM).
+     */
+    protected function formattedDueTime(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value, array $attributes): ?string => UserDateTime::formatTimeAmPm($attributes['due_time'] ?? null),
+        );
+    }
+
+    /**
+     * Helper method to get the milestone due time with AM/PM.
+     */
+    public function dueTimeAmPm(): ?string
+    {
+        return UserDateTime::formatTimeAmPm($this->due_time);
     }
 }

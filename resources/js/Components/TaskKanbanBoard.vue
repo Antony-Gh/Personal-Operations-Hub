@@ -2,7 +2,7 @@
 import { ref, computed } from 'vue';
 import { router, usePage } from '@inertiajs/vue3';
 import { PageProps, Task } from '@/types';
-import { isOverdueLocal } from '@/utils/date';
+import { formatTime12Hour, isOverdueLocal } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Check,
@@ -273,7 +273,7 @@ const priorityBadgeClass = (p: string) => {
                                     class="w-3 h-3 shrink-0"
                                 />
                                 <Calendar v-else class="w-3 h-3 shrink-0" />
-                                {{ task.due_date }}<template v-if="task.due_time"> {{ task.due_time }}</template>
+                                {{ task.due_date }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
                             </span>
 
                             <span v-if="task.estimated_duration || task.actual_duration" class="inline-flex items-center gap-0.5 shrink-0">

@@ -113,4 +113,36 @@ class UserDateTime
 
         return $candidate->utc();
     }
+
+    /**
+     * Format an HH:MM(:SS) or existing time string to 12-hour format with AM/PM (e.g., 2:30 PM).
+     */
+    public static function formatTimeAmPm(?string $time): ?string
+    {
+        if ($time === null || trim($time) === '') {
+            return null;
+        }
+
+        $clean = trim($time);
+
+        // Already formatted with AM/PM
+        if (preg_match('/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/i', $clean, $matches)) {
+            $h = (int) $matches[1];
+            $m = $matches[2];
+            $p = strtoupper($matches[3]);
+
+            return "{$h}:{$m} {$p}";
+        }
+
+        if (! preg_match('/^(\d{1,2}):(\d{2})/', $clean, $matches)) {
+            return $clean;
+        }
+
+        $hour = (int) $matches[1];
+        $minute = $matches[2];
+        $period = $hour >= 12 ? 'PM' : 'AM';
+        $hour12 = $hour % 12 ?: 12;
+
+        return "{$hour12}:{$minute} {$period}";
+    }
 }

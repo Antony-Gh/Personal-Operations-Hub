@@ -116,6 +116,7 @@ export interface Task {
     status: 'not_started' | 'in_progress' | 'waiting' | 'completed' | 'deferred';
     due_date: string | null;
     due_time?: string | null;
+    formatted_due_time?: string | null;
     reminder_preset?: TaskReminderPreset | null;
     remind_at?: string | null;
     custom_reminder_times?: string[] | null;
@@ -157,6 +158,7 @@ export interface ProjectMilestone {
     title: string;
     due_date: string | null;
     due_time?: string | null;
+    formatted_due_time?: string | null;
     reminders_enabled?: boolean;
     reminder_offsets?: number[] | null;
     is_completed: boolean;

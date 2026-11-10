@@ -98,3 +98,39 @@ export function formatRelativeTime(isoString: string | null | undefined): string
     return new Date(isoString).toLocaleDateString();
 }
 
+/**
+ * Format an HH:mm(:ss) or existing time string to 12-hour format with AM/PM (e.g., "2:30 PM", "9:05 AM").
+ */
+export function formatTime12Hour(timeStr?: string | null): string {
+    if (!timeStr) {
+        return '';
+    }
+    const clean = String(timeStr).trim();
+    if (!clean) {
+        return '';
+    }
+
+    // Already 12-hour AM/PM format (e.g., "2:30 PM" or "02:30 pm")
+    const ampmMatch = clean.match(/^(\d{1,2}):(\d{2})(?::\d{2})?\s*(am|pm)$/i);
+    if (ampmMatch) {
+        const hour = parseInt(ampmMatch[1], 10);
+        const minute = ampmMatch[2];
+        const period = ampmMatch[3].toUpperCase();
+        return `${hour}:${minute} ${period}`;
+    }
+
+    // Standard 24-hour time "HH:mm" or "HH:mm:ss"
+    const match = clean.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+    if (!match) {
+        return clean;
+    }
+
+    const hour = parseInt(match[1], 10);
+    const minute = match[2];
+    const period = hour >= 12 ? 'PM' : 'AM';
+    const hour12 = hour % 12 || 12;
+
+    return `${hour12}:${minute} ${period}`;
+}
+
+

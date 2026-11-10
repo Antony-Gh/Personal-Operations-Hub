@@ -5,7 +5,7 @@ import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TaskKanbanBoard from '@/Components/TaskKanbanBoard.vue';
 import { PageProps, Project, Tag, Task, TaskReminderPreset } from '@/types';
-import { getLocalDateTimeInputValue, isOverdueLocal } from '@/utils/date';
+import { formatTime12Hour, getLocalDateTimeInputValue, isOverdueLocal } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Search,
@@ -855,7 +855,7 @@ const saveTask = () => {
                                                     : 'text-neutral-700 dark:text-neutral-300'
                                             "
                                         >
-                                            {{ task.due_date }}<template v-if="task.due_time"> | {{ task.due_time }}</template>
+                                            {{ task.due_date }}<template v-if="task.due_time"> | {{ formatTime12Hour(task.due_time) }}</template>
                                         </span>
                                     </div>
                                     <span v-else class="text-neutral-400">-</span>

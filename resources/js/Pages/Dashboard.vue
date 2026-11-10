@@ -2,7 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Category, PageProps, Project, Task } from '@/types';
-import { getLocalDateString } from '@/utils/date';
+import { formatTime12Hour, getLocalDateString } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Calendar as CalendarIcon,
@@ -257,7 +257,7 @@ const recordBadHabitCheckIn = (badHabitId: number, status: 'clean' | 'minor_slip
                                             {{ task.category.name }}
                                         </span>
                                         <span v-if="task.due_time" class="font-mono">
-                                            {{ task.due_time }}
+                                            {{ formatTime12Hour(task.due_time) }}
                                         </span>
                                         <span v-if="task.next_action" class="text-neutral-500 dark:text-neutral-400 italic">
                                             Next: {{ task.next_action }}
@@ -318,7 +318,9 @@ const recordBadHabitCheckIn = (badHabitId: number, status: 'clean' | 'minor_slip
                                     </button>
                                     <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ task.title }}</span>
                                 </div>
-                                <span class="text-[10px] text-rose-600 dark:text-rose-400 shrink-0">Due {{ task.due_date }}</span>
+                                <span class="text-[10px] text-rose-600 dark:text-rose-400 shrink-0">
+                                    Due {{ task.due_date }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
+                                </span>
                             </div>
                         </div>
 
@@ -350,7 +352,7 @@ const recordBadHabitCheckIn = (badHabitId: number, status: 'clean' | 'minor_slip
                                 </div>
                                 <div class="flex items-center gap-2 shrink-0">
                                     <span v-if="task.due_time" class="text-[10px] font-mono text-neutral-500">
-                                        {{ task.due_time }}
+                                        {{ formatTime12Hour(task.due_time) }}
                                     </span>
                                     <span v-if="task.category" class="text-[10px] px-2 py-0.5 rounded font-medium" :style="{ backgroundColor: (task.category.color || '#6366f1') + '15', color: task.category.color || '#6366f1' }">
                                         {{ task.category.name }}

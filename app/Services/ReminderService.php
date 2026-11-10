@@ -86,10 +86,11 @@ class ReminderService
                 : UserDateTime::parseLocalDateTime($dueDateStr, '09:00', $user, '09:00')->addDay();
 
             $overdueKey = "overdue:{$dueDateStr}:{$dueTimeStr}";
+            $formattedTime = $task->formatted_due_time ?: $task->due_time;
             $specs[$overdueKey] = [
                 'category' => 'overdue_tasks',
                 'title' => "Overdue Task: {$task->title}",
-                'message' => "Task deadline ({$dueDateStr}".($task->due_time ? " {$task->due_time}" : '').') has passed.',
+                'message' => "Task deadline ({$dueDateStr}".($task->due_time ? " {$formattedTime}" : '').') has passed.',
                 'offset_label' => 'Overdue',
                 'is_critical' => $isHighPriority,
                 'scheduled_at' => $overdueLocal->utc(),

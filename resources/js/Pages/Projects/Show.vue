@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { Head, Link, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { formatTime12Hour } from '@/utils/date';
 import { PageProps, Project, ProjectMilestone, Task, TaskReminderPreset } from '@/types';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
@@ -279,7 +280,7 @@ const deleteProject = () => {
                                         {{ task.priority }}
                                     </span>
                                     <span v-if="task.due_date" class="text-[10px] text-neutral-400 font-mono">
-                                        {{ task.due_date }}<template v-if="task.due_time"> {{ task.due_time }}</template>
+                                        {{ task.due_date }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
                                     </span>
                                 </div>
                             </div>
@@ -347,7 +348,7 @@ const deleteProject = () => {
                                     </div>
                                     <p v-if="m.due_date" class="text-[10px] text-neutral-400 mt-0.5 flex items-center gap-1">
                                         <Bell v-if="m.reminders_enabled" class="w-2.5 h-2.5 text-amber-500" />
-                                        <span>Target: {{ m.due_date }}<template v-if="m.due_time"> {{ m.due_time }}</template></span>
+                                        <span>Target: {{ m.due_date }}<template v-if="m.due_time"> {{ formatTime12Hour(m.due_time) }}</template></span>
                                     </p>
                                 </div>
                             </div>

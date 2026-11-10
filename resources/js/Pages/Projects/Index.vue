@@ -3,7 +3,7 @@ import { ref } from 'vue';
 import { Head, Link, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Category, PageProps, Project } from '@/types';
-import { getLocalDateString } from '@/utils/date';
+import { formatTime12Hour, getLocalDateString } from '@/utils/date';
 import {
     FolderKanban,
     Plus,
@@ -398,7 +398,7 @@ const kanbanColumns = [
                                     <div>
                                         <p class="font-medium text-neutral-900 dark:text-white">{{ m.title }}</p>
                                         <p v-if="m.due_date" class="text-[10px] text-neutral-400">
-                                            Due: {{ m.due_date }}<template v-if="m.due_time"> {{ m.due_time }}</template>
+                                            Due: {{ m.due_date }}<template v-if="m.due_time"> {{ formatTime12Hour(m.due_time) }}</template>
                                         </p>
                                     </div>
                                     <button

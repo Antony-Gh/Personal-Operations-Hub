@@ -213,12 +213,13 @@ class IcsGeneratorService
             : ($task->status === 'completed' ? 'COMPLETED' : 'CONFIRMED');
 
         $summaryPrefix = $task->status === 'completed' ? '[Done] ' : '[Task] ';
+        $formattedTime = $task->formatted_due_time ?: $task->due_time;
         $descriptionParts = array_filter([
             $task->description,
             'Priority: '.strtoupper($task->priority),
             $task->project ? "Project: {$task->project->name}" : null,
             $task->next_action ? "Next Action: {$task->next_action}" : null,
-            "Deadline: {$dueDateStr}".($task->due_time ? " {$task->due_time}" : ''),
+            "Deadline: {$dueDateStr}".($task->due_time ? " {$formattedTime}" : ''),
         ]);
 
         $block = [

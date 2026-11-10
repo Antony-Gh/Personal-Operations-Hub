@@ -2,6 +2,7 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
+import { formatTime12Hour } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Sun,
@@ -210,7 +211,7 @@ const toggleTask = (taskId: number) => {
                                             </p>
                                             <p class="text-[11px] text-neutral-500">
                                                 <span class="uppercase font-semibold">{{ task.priority }}</span>
-                                                <template v-if="task.due_time"> • {{ task.due_time }}</template>
+                                                <template v-if="task.due_time"> • {{ formatTime12Hour(task.due_time) }}</template>
                                                 <template v-if="task.project"> • {{ task.project.name }}</template>
                                             </p>
                                         </div>
@@ -245,7 +246,7 @@ const toggleTask = (taskId: number) => {
                                 >
                                     <span class="font-medium text-neutral-900 dark:text-neutral-100 truncate">{{ task.title }}</span>
                                     <span class="text-rose-600 dark:text-rose-400 font-mono text-[11px] shrink-0 ml-2">
-                                        Due {{ task.due_date }}
+                                        Due {{ task.due_date }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
                                     </span>
                                 </div>
                             </div>

@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { CalendarEvent, PageProps, Project } from '@/types';
-import { getLocalDateString } from '@/utils/date';
+import { formatTime12Hour, getLocalDateString } from '@/utils/date';
 import {
     Calendar as CalendarIcon,
     ChevronLeft,
@@ -481,7 +481,7 @@ const submitEvent = () => {
                                         <span v-if="item.end_time"> - {{ new Date(item.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                                     </p>
                                     <p v-else-if="item.due_time" class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-mono">
-                                        {{ item.due_time }}
+                                        {{ formatTime12Hour(item.due_time) }}
                                     </p>
                                     <p v-if="item.location" class="text-[10px] text-neutral-400 flex items-center gap-1 mt-0.5">
                                         <MapPin class="w-3 h-3" /> {{ item.location }}
@@ -555,7 +555,7 @@ const submitEvent = () => {
                                         <span v-if="item.end_time"> - {{ new Date(item.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }}</span>
                                     </p>
                                     <p v-else-if="item.due_time" class="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5 font-mono">
-                                        {{ item.due_time }}
+                                        {{ formatTime12Hour(item.due_time) }}
                                     </p>
                                     <p v-if="item.location" class="text-[10px] text-neutral-400 flex items-center gap-1 mt-0.5">
                                         <MapPin class="w-3 h-3" /> {{ item.location }}

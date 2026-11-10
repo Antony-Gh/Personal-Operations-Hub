@@ -7,6 +7,7 @@ use App\Services\ReminderService;
 use App\Services\TaskDependencyService;
 use App\Support\UserDateTime;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -49,6 +50,10 @@ class Task extends Model
         'recurrence_parent_id',
         'recurrence_generated',
         'completed_at',
+    ];
+
+    protected $appends = [
+        'formatted_due_time',
     ];
 
     protected function casts(): array
@@ -218,5 +223,23 @@ class Task extends Model
             'status' => 'in_progress',
             'completed_at' => null,
         ]);
+    }
+
+    /**
+     * Get the formatted 12-hour due time with AM/PM (e.g., 2:30 PM).
+     */
+    protected function formattedDueTime(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value, array $attributes): ?string => UserDateTime::formatTimeAmPm($attributes['due_time'] ?? null),
+        );
+    }
+
+    /**
+     * Helper method to get the task due time with AM/PM.
+     */
+    public function dueTimeAmPm(): ?string
+    {
+        return UserDateTime::formatTimeAmPm($this->due_time);
     }
 }

@@ -152,9 +152,7 @@ class DailyPlanController extends Controller
 
     public function updatePlan(Request $request, DailyPlan $dailyPlan): RedirectResponse
     {
-        if ($dailyPlan->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $dailyPlan);
 
         $validated = $request->validate([
             'fallback_plan' => 'nullable|string',
@@ -169,9 +167,7 @@ class DailyPlanController extends Controller
 
     public function addTask(Request $request, DailyPlan $dailyPlan): RedirectResponse
     {
-        if ($dailyPlan->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $dailyPlan);
 
         $validated = $request->validate([
             'task_id' => [
@@ -206,9 +202,8 @@ class DailyPlanController extends Controller
 
     public function togglePriority(DailyPlan $dailyPlan, Task $task): RedirectResponse
     {
-        if ($dailyPlan->user_id !== request()->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $dailyPlan);
+        $this->authorize('view', $task);
 
         $planTask = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
             ->where('task_id', $task->id)
@@ -231,9 +226,8 @@ class DailyPlanController extends Controller
 
     public function removeTask(DailyPlan $dailyPlan, Task $task): RedirectResponse
     {
-        if ($dailyPlan->user_id !== request()->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $dailyPlan);
+        $this->authorize('view', $task);
 
         DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
             ->where('task_id', $task->id)
@@ -244,9 +238,7 @@ class DailyPlanController extends Controller
 
     public function reorder(Request $request, DailyPlan $dailyPlan): RedirectResponse
     {
-        if ($dailyPlan->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $dailyPlan);
 
         $validated = $request->validate([
             'order' => 'required|array',
@@ -269,10 +261,10 @@ class DailyPlanController extends Controller
 
     public function updateTimeBlock(Request $request, DailyPlan $dailyPlan, Task $task): RedirectResponse
     {
+        $this->authorize('update', $dailyPlan);
+        $this->authorize('view', $task);
+
         $user = $request->user();
-        if ($dailyPlan->user_id !== $user->id || $task->user_id !== $user->id) {
-            abort(403);
-        }
 
         $validated = $request->validate([
             'scheduled_start_time' => ['nullable', 'regex:/^\d{2}:\d{2}$/'],
@@ -307,9 +299,7 @@ class DailyPlanController extends Controller
 
     public function rescheduleTask(Request $request, Task $task): RedirectResponse
     {
-        if ($task->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $task);
 
         $validated = $request->validate([
             'due_date' => 'required|date',

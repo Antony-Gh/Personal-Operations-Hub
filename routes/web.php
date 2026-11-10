@@ -42,6 +42,7 @@ Route::get('/welcome', function () {
 // Token-authenticated private .ics calendar subscription feed (no session cookie required)
 Route::get('/calendar/feed/{token}.ics', [CalendarFeedController::class, 'feed'])
     ->where('token', '[A-Za-z0-9_-]+')
+    ->middleware('throttle:calendar-feed')
     ->name('calendar.feed');
 
 Route::middleware(['auth', 'verified'])->group(function (): void {

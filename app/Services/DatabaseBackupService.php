@@ -287,6 +287,13 @@ class DatabaseBackupService
         try {
             if (! $isUsingInMemoryConnection) {
                 DB::disconnect('sqlite');
+
+                if (File::exists($destinationPath.'-wal')) {
+                    @File::delete($destinationPath.'-wal');
+                }
+                if (File::exists($destinationPath.'-shm')) {
+                    @File::delete($destinationPath.'-shm');
+                }
             }
 
             $sourceDb = new SQLite3($backupPath, SQLITE3_OPEN_READONLY);

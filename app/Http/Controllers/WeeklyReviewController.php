@@ -100,9 +100,7 @@ class WeeklyReviewController extends Controller
 
     public function update(Request $request, WeeklyReview $weeklyReview): RedirectResponse
     {
-        if ($weeklyReview->user_id !== $request->user()->id) {
-            abort(403);
-        }
+        $this->authorize('update', $weeklyReview);
 
         $validated = $request->validate([
             'responses' => 'required|array',

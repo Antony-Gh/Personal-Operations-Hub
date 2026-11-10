@@ -197,8 +197,7 @@ class ProjectController extends Controller
 
     public function toggleMilestone(ProjectMilestone $milestone, ReminderService $reminderService): RedirectResponse
     {
-        $project = $milestone->project;
-        $this->authorize('update', $project);
+        $this->authorize('update', $milestone);
 
         $becomingCompleted = ! $milestone->is_completed;
 
@@ -216,8 +215,7 @@ class ProjectController extends Controller
 
     public function destroyMilestone(ProjectMilestone $milestone): RedirectResponse
     {
-        $project = $milestone->project;
-        $this->authorize('update', $project);
+        $this->authorize('delete', $milestone);
 
         $milestone->delete();
 

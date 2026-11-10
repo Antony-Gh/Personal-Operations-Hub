@@ -141,3 +141,38 @@ test('private calendar subscription token authenticates unauthenticated feed req
     auth()->logout();
     $this->get($newFeedPath)->assertForbidden();
 });
+
+test('calendar feed endpoint enforces rate limiting and does not leak sensitive token information on failure', function (): void {
+    $user = User::factory()->create();
+    $genResponse = $this->actingAs($user)
+        ->postJson('/calendar/feed/token')
+        ->assertOk();
+
+    $feedUrl = $genResponse->json('feed_url');
+    $feedPath = parse_url($feedUrl, PHP_URL_PATH);
+    auth()->logout();
+
+    // Normal valid request succeeds with 200 and returns standard calendar headers
+    $okResponse = $this->get($feedPath)->assertOk();
+    expect($okResponse->headers->get('Content-Type'))->toContain('text/calendar')
+        ->and($okResponse->headers->has('X-RateLimit-Limit'))->toBeTrue();
+
+    // Invalid token returns 403 Forbidden with generic message and no stack trace
+    $bogusToken = bin2hex(random_bytes(24));
+    $badResponse = $this->get("/calendar/feed/{$bogusToken}.ics")->assertForbidden();
+    expect($badResponse->getContent())->toBe('Invalid or revoked calendar subscription token.')
+        ->and($badResponse->getContent())->not->toContain($bogusToken);
+
+    // Exceeding the rate limit returns 429 Too Many Requests
+    // We make 65 requests from the same IP to trip the 60 req/min limit
+    $hitRateLimit = false;
+    for ($i = 0; $i < 65; $i++) {
+        $resp = $this->get($feedPath);
+        if ($resp->status() === 429) {
+            $hitRateLimit = true;
+            break;
+        }
+    }
+
+    expect($hitRateLimit)->toBeTrue();
+});

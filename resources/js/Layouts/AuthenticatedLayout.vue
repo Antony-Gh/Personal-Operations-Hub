@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch, onUnmounted } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { PageProps } from '@/types';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
@@ -82,23 +82,92 @@ const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') =
     quickAddTab.value = tab;
     isQuickAddOpen.value = true;
 };
+
+// Toast Notifications (Auto-dismissing)
+const toast = ref<{
+    type: 'success' | 'error';
+    message: string;
+    id: number;
+} | null>(null);
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
+
+const dismissToast = () => {
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+        toastTimer = null;
+    }
+    toast.value = null;
+};
+
+const showToast = (type: 'success' | 'error', message: string) => {
+    dismissToast();
+    const id = Date.now();
+    toast.value = { type, message, id };
+    toastTimer = setTimeout(() => {
+        if (toast.value?.id === id) {
+            toast.value = null;
+        }
+    }, 4500);
+};
+
+watch(
+    () => [page.props.flash?.success, page.props.flash?.error],
+    ([newSuccess, newError]) => {
+        if (newSuccess) {
+            showToast('success', String(newSuccess));
+        } else if (newError) {
+            showToast('error', String(newError));
+        }
+    },
+    { immediate: true }
+);
+
+onUnmounted(() => {
+    if (toastTimer) {
+        clearTimeout(toastTimer);
+    }
+});
 </script>
 
 <template>
-    <div class="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-200">
-        <!-- Top Flash Alerts -->
-        <div v-if="page.props.flash?.success" class="bg-emerald-500/10 border-b border-emerald-500/20 text-emerald-800 dark:text-emerald-300 px-4 py-2 text-xs flex items-center justify-between">
-            <div class="flex items-center gap-2 max-w-7xl mx-auto w-full">
-                <CheckCircle2 class="w-4 h-4 text-emerald-600 shrink-0" />
-                <span>{{ page.props.flash.success }}</span>
+    <div class="h-screen max-h-screen overflow-hidden bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-200">
+        <!-- Floating Top Flash Toast (Auto-dismissing) -->
+        <Transition
+            enter-active-class="transition duration-300 ease-out"
+            enter-from-class="opacity-0 -translate-y-4 scale-95"
+            enter-to-class="opacity-100 translate-y-0 scale-100"
+            leave-active-class="transition duration-200 ease-in"
+            leave-from-class="opacity-100 translate-y-0 scale-100"
+            leave-to-class="opacity-0 -translate-y-4 scale-95"
+        >
+            <div
+                v-if="toast"
+                class="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] pointer-events-auto"
+            >
+                <div
+                    class="rounded-xl px-4 py-3 shadow-xl backdrop-blur-md border flex items-center justify-between gap-3 text-xs"
+                    :class="
+                        toast.type === 'success'
+                            ? 'bg-white/95 dark:bg-neutral-900/95 border-emerald-500/30 text-emerald-900 dark:text-emerald-200 shadow-emerald-500/10'
+                            : 'bg-white/95 dark:bg-neutral-900/95 border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-rose-500/10'
+                    "
+                >
+                    <div class="flex items-center gap-2.5 min-w-0">
+                        <CheckCircle2 v-if="toast.type === 'success'" class="w-4 h-4 text-emerald-500 shrink-0" />
+                        <AlertCircle v-else class="w-4 h-4 text-rose-500 shrink-0" />
+                        <span class="font-medium truncate">{{ toast.message }}</span>
+                    </div>
+                    <button
+                        type="button"
+                        @click="dismissToast"
+                        class="p-1 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition shrink-0"
+                        title="Dismiss alert"
+                    >
+                        <X class="w-3.5 h-3.5" />
+                    </button>
+                </div>
             </div>
-        </div>
-        <div v-if="page.props.flash?.error" class="bg-rose-500/10 border-b border-rose-500/20 text-rose-800 dark:text-rose-300 px-4 py-2 text-xs flex items-center justify-between">
-            <div class="flex items-center gap-2 max-w-7xl mx-auto w-full">
-                <AlertCircle class="w-4 h-4 text-rose-600 shrink-0" />
-                <span>{{ page.props.flash.error }}</span>
-            </div>
-        </div>
+        </Transition>
 
         <div class="flex flex-1 overflow-hidden">
             <!-- Desktop Sidebar -->
@@ -164,20 +233,36 @@ const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') =
                     </div>
                 </nav>
 
-                <!-- Footer / User preview in sidebar -->
-                <div class="p-3 border-t border-neutral-200 dark:border-neutral-800">
-                    <div class="flex items-center gap-3 px-2 py-1.5 rounded-lg bg-neutral-100/50 dark:bg-neutral-800/40">
-                        <div class="w-7 h-7 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-medium text-xs flex items-center justify-center shrink-0">
-                            {{ page.props.auth.user.name.charAt(0) }}
-                        </div>
-                        <div v-if="!isSidebarCollapsed" class="flex-1 min-w-0">
-                            <p class="text-xs font-medium text-neutral-900 dark:text-neutral-100 truncate">
-                                {{ page.props.auth.user.setting?.display_name || page.props.auth.user.name }}
-                            </p>
-                            <p class="text-[11px] text-neutral-400 truncate">
-                                {{ page.props.auth.user.email }}
-                            </p>
-                        </div>
+                <!-- Sticky Account Info at bottom of sidebar/screen -->
+                <div class="p-3 border-t border-neutral-200 dark:border-neutral-800 mt-auto shrink-0 sticky bottom-0 bg-white dark:bg-neutral-900 z-10">
+                    <div class="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-neutral-100/60 dark:bg-neutral-800/60 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition">
+                        <Link
+                            :href="route('profile.edit')"
+                            class="flex items-center gap-2.5 min-w-0 flex-1 group"
+                            :title="isSidebarCollapsed ? page.props.auth.user.name + ' (' + page.props.auth.user.email + ')' : 'Account Security & Settings'"
+                        >
+                            <div class="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-semibold text-xs flex items-center justify-center shrink-0 group-hover:ring-2 group-hover:ring-indigo-500/40 transition">
+                                {{ page.props.auth.user.name.charAt(0) }}
+                            </div>
+                            <div v-if="!isSidebarCollapsed" class="flex-1 min-w-0">
+                                <p class="text-xs font-semibold text-neutral-900 dark:text-neutral-100 truncate group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition">
+                                    {{ page.props.auth.user.setting?.display_name || page.props.auth.user.name }}
+                                </p>
+                                <p class="text-[11px] text-neutral-400 truncate">
+                                    {{ page.props.auth.user.email }}
+                                </p>
+                            </div>
+                        </Link>
+                        <Link
+                            v-if="!isSidebarCollapsed"
+                            :href="route('logout')"
+                            method="post"
+                            as="button"
+                            class="p-1.5 rounded-md text-neutral-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 transition shrink-0"
+                            title="Log Out"
+                        >
+                            <LogOut class="w-3.5 h-3.5" />
+                        </Link>
                     </div>
                 </div>
             </aside>
@@ -236,7 +321,7 @@ const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') =
                         </div>
                     </nav>
 
-                    <div class="p-4 border-t border-neutral-200 dark:border-neutral-800">
+                    <div class="p-4 border-t border-neutral-200 dark:border-neutral-800 mt-auto shrink-0 sticky bottom-0 bg-white dark:bg-neutral-900 z-10">
                         <Link
                             :href="route('logout')"
                             method="post"

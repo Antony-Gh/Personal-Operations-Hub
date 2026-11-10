@@ -232,7 +232,7 @@ const archiveHabit = (habitId: number) => {
                             </div>
                         </div>
 
-                        <div class="flex items-center gap-1.5 overflow-x-auto pb-1">
+                        <div class="flex items-center gap-1.5 overflow-x-auto py-2">
                             <button
                                 v-for="item in habit.history"
                                 :key="item.date"

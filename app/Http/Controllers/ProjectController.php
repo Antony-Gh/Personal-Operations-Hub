@@ -6,6 +6,7 @@ use App\Models\Project;
 use App\Models\ProjectMilestone;
 use App\Models\Task;
 use App\Services\ReminderService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -70,7 +71,7 @@ class ProjectController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $user = $request->user();
 
@@ -81,7 +82,7 @@ class ProjectController extends Controller
                 Rule::exists('categories', 'id')->where('user_id', $user->id),
             ],
             'description' => 'nullable|string',
-            'status' => 'required|in:planned,in_progress,on_hold,completed,archived',
+            'status' => 'nullable|in:planned,in_progress,on_hold,completed,archived',
             'start_date' => 'nullable|date',
             'target_date' => 'nullable|date',
             'reminders_enabled' => 'nullable|boolean',
@@ -96,13 +97,13 @@ class ProjectController extends Controller
             'milestones.*.reminders_enabled' => 'nullable|boolean',
         ]);
 
-        DB::transaction(function () use ($validated, $user): void {
+        $project = DB::transaction(function () use ($validated, $user): Project {
             $project = Project::create([
                 'user_id' => $user->id,
                 'category_id' => $validated['category_id'] ?? null,
                 'name' => $validated['name'],
                 'description' => $validated['description'] ?? null,
-                'status' => $validated['status'],
+                'status' => $validated['status'] ?? 'in_progress',
                 'start_date' => $validated['start_date'] ?? null,
                 'target_date' => $validated['target_date'] ?? null,
                 'reminders_enabled' => $validated['reminders_enabled'] ?? true,
@@ -124,7 +125,17 @@ class ProjectController extends Controller
                     ]);
                 }
             }
+
+            return $project;
         });
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'project' => $project->load('category'),
+                'message' => 'Project created successfully.',
+            ], 201);
+        }
 
         return back()->with('success', 'Project created successfully.');
     }

@@ -17,6 +17,30 @@ it('allows user to create a category', function () {
     expect(Category::where('user_id', $user->id)->where('name', 'University Studies')->exists())->toBeTrue();
 });
 
+it('returns json when creating a category via json request', function () {
+    $user = User::factory()->create();
+
+    $response = $this->actingAs($user)->postJson(route('categories.store'), [
+        'name' => 'Fitness & Health',
+        'color' => '#10b981',
+        'icon' => 'Heart',
+    ]);
+
+    $response->assertCreated()
+        ->assertJson([
+            'success' => true,
+            'category' => [
+                'name' => 'Fitness & Health',
+                'color' => '#10b981',
+                'icon' => 'Heart',
+                'user_id' => $user->id,
+            ],
+            'message' => 'Area created successfully.',
+        ]);
+
+    expect(Category::where('user_id', $user->id)->where('name', 'Fitness & Health')->exists())->toBeTrue();
+});
+
 it('allows user to update a category', function () {
     $user = User::factory()->create();
     $cat = Category::create([

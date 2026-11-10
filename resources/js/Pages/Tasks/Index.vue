@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
+import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TaskKanbanBoard from '@/Components/TaskKanbanBoard.vue';
 import { PageProps, Project, Tag, Task, TaskReminderPreset } from '@/types';
@@ -23,6 +24,9 @@ import {
     Timer,
     Bell,
     Lock,
+    Folder,
+    FolderKanban,
+    Loader2,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -213,6 +217,172 @@ const toggleBlockerSelection = (blockerId: number) => {
         taskForm.blocked_by_ids.push(blockerId);
     }
 };
+
+const localProjects = ref<Project[]>([...props.projects]);
+
+watch(
+    () => props.projects,
+    (newProjects) => {
+        localProjects.value = [...newProjects];
+    },
+    { deep: true }
+);
+
+// Quick Add Area (Category)
+const isQuickCategoryOpen = ref(false);
+const quickCategoryName = ref('');
+const quickCategoryColor = ref('#6366f1');
+const quickCategoryIcon = ref('Folder');
+const isSavingQuickCategory = ref(false);
+const quickCategoryError = ref('');
+
+const openQuickCategoryModal = () => {
+    quickCategoryName.value = '';
+    quickCategoryColor.value = '#6366f1';
+    quickCategoryIcon.value = 'Folder';
+    quickCategoryError.value = '';
+    isQuickCategoryOpen.value = true;
+};
+
+const closeQuickCategoryModal = () => {
+    isQuickCategoryOpen.value = false;
+    quickCategoryName.value = '';
+    quickCategoryError.value = '';
+};
+
+const submitQuickCategory = async () => {
+    if (!quickCategoryName.value.trim()) {
+        quickCategoryError.value = 'Please enter an area name.';
+        return;
+    }
+    isSavingQuickCategory.value = true;
+    quickCategoryError.value = '';
+    try {
+        const response = await axios.post(
+            route('categories.store'),
+            {
+                name: quickCategoryName.value.trim(),
+                color: quickCategoryColor.value,
+                icon: quickCategoryIcon.value,
+            },
+            {
+                headers: {
+                    Accept: 'application/json',
+                },
+            }
+        );
+
+        const newCat = response.data?.category;
+        if (newCat) {
+            const categories = page.props.categories as any[];
+            if (!categories.some((c) => c.id === newCat.id)) {
+                categories.push(newCat);
+                categories.sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+            }
+            taskForm.category_id = newCat.id;
+        }
+        closeQuickCategoryModal();
+    } catch (err: any) {
+        quickCategoryError.value =
+            err.response?.data?.errors?.name?.[0] ||
+            err.response?.data?.message ||
+            'Failed to create area.';
+    } finally {
+        isSavingQuickCategory.value = false;
+    }
+};
+
+// Quick Add Project
+const isQuickProjectOpen = ref(false);
+const quickProjectName = ref('');
+const quickProjectCategoryId = ref<string | number>('');
+const quickProjectStatus = ref('in_progress');
+const quickProjectDescription = ref('');
+const quickProjectTargetDate = ref('');
+const isSavingQuickProject = ref(false);
+const quickProjectError = ref('');
+
+const openQuickProjectModal = () => {
+    quickProjectName.value = '';
+    quickProjectCategoryId.value = taskForm.category_id || '';
+    quickProjectStatus.value = 'in_progress';
+    quickProjectDescription.value = '';
+    quickProjectTargetDate.value = '';
+    quickProjectError.value = '';
+    isQuickProjectOpen.value = true;
+};
+
+const closeQuickProjectModal = () => {
+    isQuickProjectOpen.value = false;
+    quickProjectName.value = '';
+    quickProjectError.value = '';
+};
+
+const submitQuickProject = async () => {
+    if (!quickProjectName.value.trim()) {
+        quickProjectError.value = 'Please enter a project name.';
+        return;
+    }
+    isSavingQuickProject.value = true;
+    quickProjectError.value = '';
+    try {
+        const response = await axios.post(
+            route('projects.store'),
+            {
+                name: quickProjectName.value.trim(),
+                category_id: quickProjectCategoryId.value || null,
+                status: quickProjectStatus.value || 'in_progress',
+                description: quickProjectDescription.value.trim() || null,
+                target_date: quickProjectTargetDate.value || null,
+            },
+            {
+                headers: {
+                    Accept: 'application/json',
+                },
+            }
+        );
+
+        const newProj = response.data?.project;
+        if (newProj) {
+            if (!localProjects.value.some((p) => p.id === newProj.id)) {
+                localProjects.value.push(newProj);
+                localProjects.value.sort((a, b) => a.name.localeCompare(b.name));
+            }
+            taskForm.project_id = newProj.id;
+            if (!taskForm.category_id && newProj.category_id) {
+                taskForm.category_id = newProj.category_id;
+            }
+        }
+        closeQuickProjectModal();
+    } catch (err: any) {
+        quickProjectError.value =
+            err.response?.data?.errors?.name?.[0] ||
+            err.response?.data?.message ||
+            'Failed to create project.';
+    } finally {
+        isSavingQuickProject.value = false;
+    }
+};
+
+watch(
+    () => taskForm.category_id,
+    (val) => {
+        if (val === '__new__') {
+            taskForm.category_id = '';
+            openQuickCategoryModal();
+        }
+    }
+);
+
+watch(
+    () => taskForm.project_id,
+    (val) => {
+        if (val === '__new__') {
+            taskForm.project_id = '';
+            openQuickProjectModal();
+        }
+    }
+);
 
 const openCreateModal = () => {
     const setting = page.props.auth.user?.setting;
@@ -685,7 +855,7 @@ const saveTask = () => {
                                                     : 'text-neutral-700 dark:text-neutral-300'
                                             "
                                         >
-                                            {{ task.due_date }}<template v-if="task.due_time"> {{ task.due_time }}</template>
+                                            {{ task.due_date }}<template v-if="task.due_time"> | {{ task.due_time }}</template>
                                         </span>
                                     </div>
                                     <span v-else class="text-neutral-400">-</span>
@@ -799,30 +969,76 @@ const saveTask = () => {
                         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <!-- Category -->
                             <div>
-                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Area / Category</label>
-                                <select
-                                    v-model="taskForm.category_id"
-                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
-                                >
-                                    <option value="">None</option>
-                                    <option v-for="cat in $page.props.categories" :key="cat.id" :value="cat.id">
-                                        {{ cat.name }}
-                                    </option>
-                                </select>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block font-medium text-neutral-700 dark:text-neutral-300">Area / Category</label>
+                                    <button
+                                        type="button"
+                                        @click="openQuickCategoryModal"
+                                        class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition"
+                                    >
+                                        <Plus class="w-3 h-3" />
+                                        <span>Add Area</span>
+                                    </button>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <select
+                                        v-model="taskForm.category_id"
+                                        class="flex-1 text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                                    >
+                                        <option value="">None</option>
+                                        <option v-for="cat in $page.props.categories" :key="cat.id" :value="cat.id">
+                                            {{ cat.name }}
+                                        </option>
+                                        <option value="__new__" class="font-semibold text-indigo-600 dark:text-indigo-400">
+                                            + Add New Area...
+                                        </option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        @click="openQuickCategoryModal"
+                                        title="Create new area"
+                                        class="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition shrink-0"
+                                    >
+                                        <Plus class="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
 
                             <!-- Project -->
                             <div>
-                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Project</label>
-                                <select
-                                    v-model="taskForm.project_id"
-                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
-                                >
-                                    <option value="">None</option>
-                                    <option v-for="p in projects" :key="p.id" :value="p.id">
-                                        {{ p.name }}
-                                    </option>
-                                </select>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block font-medium text-neutral-700 dark:text-neutral-300">Project</label>
+                                    <button
+                                        type="button"
+                                        @click="openQuickProjectModal"
+                                        class="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 transition"
+                                    >
+                                        <Plus class="w-3 h-3" />
+                                        <span>Add Project</span>
+                                    </button>
+                                </div>
+                                <div class="flex items-center gap-1.5">
+                                    <select
+                                        v-model="taskForm.project_id"
+                                        class="flex-1 text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                                    >
+                                        <option value="">None</option>
+                                        <option v-for="p in localProjects" :key="p.id" :value="p.id">
+                                            {{ p.name }}
+                                        </option>
+                                        <option value="__new__" class="font-semibold text-indigo-600 dark:text-indigo-400">
+                                            + Add New Project...
+                                        </option>
+                                    </select>
+                                    <button
+                                        type="button"
+                                        @click="openQuickProjectModal"
+                                        title="Create new project"
+                                        class="p-2 rounded-lg border border-neutral-200 dark:border-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-300 hover:text-indigo-600 dark:hover:text-indigo-400 transition shrink-0"
+                                    >
+                                        <Plus class="w-3.5 h-3.5" />
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -1178,6 +1394,202 @@ const saveTask = () => {
                                 class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm transition disabled:opacity-50"
                             >
                                 Save Task
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Quick Add Area Modal -->
+            <div
+                v-if="isQuickCategoryOpen"
+                class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                @click.self="closeQuickCategoryModal"
+            >
+                <div class="bg-white dark:bg-neutral-900 rounded-2xl max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 space-y-4">
+                    <div class="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
+                        <div class="flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                                <Folder class="w-4 h-4" />
+                            </span>
+                            <h3 class="text-base font-bold text-neutral-900 dark:text-white">
+                                Add New Area
+                            </h3>
+                        </div>
+                        <button type="button" @click="closeQuickCategoryModal" class="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">
+                            <X class="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div v-if="quickCategoryError" class="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-600 dark:text-rose-400">
+                        {{ quickCategoryError }}
+                    </div>
+
+                    <form @submit.prevent="submitQuickCategory" class="space-y-4 text-xs">
+                        <div>
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Area Name *</label>
+                            <input
+                                v-model="quickCategoryName"
+                                type="text"
+                                required
+                                autofocus
+                                placeholder="e.g. University, ROV Sub-team, Personal"
+                                class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                            />
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Color</label>
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        v-model="quickCategoryColor"
+                                        type="color"
+                                        class="h-8 w-11 rounded border border-neutral-200 dark:border-neutral-800 p-0.5 bg-transparent cursor-pointer"
+                                    />
+                                    <span class="font-mono text-[11px] text-neutral-500">{{ quickCategoryColor }}</span>
+                                </div>
+                            </div>
+
+                            <div>
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Icon</label>
+                                <select
+                                    v-model="quickCategoryIcon"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                >
+                                    <option value="Folder">Folder</option>
+                                    <option value="GraduationCap">Graduation Cap</option>
+                                    <option value="Code">Code</option>
+                                    <option value="Zap">Zap</option>
+                                    <option value="Compass">Compass</option>
+                                    <option value="Briefcase">Briefcase</option>
+                                    <option value="Heart">Heart</option>
+                                    <option value="User">User</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                            <button
+                                type="button"
+                                @click="closeQuickCategoryModal"
+                                class="px-3.5 py-1.5 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                :disabled="isSavingQuickCategory"
+                                class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium flex items-center gap-1.5 disabled:opacity-50 transition"
+                            >
+                                <Loader2 v-if="isSavingQuickCategory" class="w-3.5 h-3.5 animate-spin" />
+                                <span>Save Area</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- Quick Add Project Modal -->
+            <div
+                v-if="isQuickProjectOpen"
+                class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
+                @click.self="closeQuickProjectModal"
+            >
+                <div class="bg-white dark:bg-neutral-900 rounded-2xl max-w-md w-full border border-neutral-200 dark:border-neutral-800 shadow-2xl p-6 space-y-4">
+                    <div class="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
+                        <div class="flex items-center gap-2">
+                            <span class="p-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400">
+                                <FolderKanban class="w-4 h-4" />
+                            </span>
+                            <h3 class="text-base font-bold text-neutral-900 dark:text-white">
+                                Add New Project
+                            </h3>
+                        </div>
+                        <button type="button" @click="closeQuickProjectModal" class="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200">
+                            <X class="w-5 h-5" />
+                        </button>
+                    </div>
+
+                    <div v-if="quickProjectError" class="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 text-xs text-rose-600 dark:text-rose-400">
+                        {{ quickProjectError }}
+                    </div>
+
+                    <form @submit.prevent="submitQuickProject" class="space-y-4 text-xs">
+                        <div>
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Project Name *</label>
+                            <input
+                                v-model="quickProjectName"
+                                type="text"
+                                required
+                                autofocus
+                                placeholder="e.g. ROV Stabilizer, Exam Revision"
+                                class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                            />
+                        </div>
+
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Area / Category</label>
+                                <select
+                                    v-model="quickProjectCategoryId"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                >
+                                    <option value="">None</option>
+                                    <option v-for="cat in $page.props.categories" :key="cat.id" :value="cat.id">
+                                        {{ cat.name }}
+                                    </option>
+                                </select>
+                            </div>
+
+                            <div>
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Status</label>
+                                <select
+                                    v-model="quickProjectStatus"
+                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                                >
+                                    <option value="planned">Planned</option>
+                                    <option value="in_progress">In Progress</option>
+                                    <option value="on_hold">On Hold</option>
+                                    <option value="completed">Completed</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Target Date (Optional)</label>
+                            <input
+                                v-model="quickProjectTargetDate"
+                                type="date"
+                                class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
+                            />
+                        </div>
+
+                        <div>
+                            <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Description (Optional)</label>
+                            <textarea
+                                v-model="quickProjectDescription"
+                                rows="2"
+                                placeholder="Brief project summary..."
+                                class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
+                            ></textarea>
+                        </div>
+
+                        <div class="flex justify-end gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-800">
+                            <button
+                                type="button"
+                                @click="closeQuickProjectModal"
+                                class="px-3.5 py-1.5 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                type="submit"
+                                :disabled="isSavingQuickProject"
+                                class="px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium flex items-center gap-1.5 disabled:opacity-50 transition"
+                            >
+                                <Loader2 v-if="isSavingQuickProject" class="w-3.5 h-3.5 animate-spin" />
+                                <span>Save Project</span>
                             </button>
                         </div>
                     </form>

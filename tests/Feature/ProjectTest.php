@@ -26,6 +26,32 @@ it('creates project with initial milestones', function () {
     expect($project->milestones)->toHaveCount(2);
 });
 
+it('returns json when creating a project via json request', function () {
+    $user = User::factory()->create();
+    $cat = Category::create(['user_id' => $user->id, 'name' => 'Research']);
+
+    $response = $this->actingAs($user)->postJson(route('projects.store'), [
+        'name' => 'Autonomous Drone Navigation',
+        'category_id' => $cat->id,
+        'status' => 'planned',
+        'description' => 'SLAM algorithm implementation',
+    ]);
+
+    $response->assertCreated()
+        ->assertJson([
+            'success' => true,
+            'project' => [
+                'name' => 'Autonomous Drone Navigation',
+                'category_id' => $cat->id,
+                'status' => 'planned',
+                'user_id' => $user->id,
+            ],
+            'message' => 'Project created successfully.',
+        ]);
+
+    expect(Project::where('user_id', $user->id)->where('name', 'Autonomous Drone Navigation')->exists())->toBeTrue();
+});
+
 it('toggles project milestone completion', function () {
     $user = User::factory()->create();
     $project = Project::create(['user_id' => $user->id, 'name' => 'Minesweeper Robot', 'status' => 'in_progress']);

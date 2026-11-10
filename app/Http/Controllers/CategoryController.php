@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Task;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +28,7 @@ class CategoryController extends Controller
         ]);
     }
 
-    public function store(Request $request): RedirectResponse
+    public function store(Request $request): RedirectResponse|JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -38,7 +39,7 @@ class CategoryController extends Controller
         $user = $request->user();
         $maxOrder = Category::where('user_id', $user->id)->max('sort_order') ?? 0;
 
-        Category::create([
+        $category = Category::create([
             'user_id' => $user->id,
             'name' => $validated['name'],
             'color' => $validated['color'] ?? '#6366f1',
@@ -46,6 +47,14 @@ class CategoryController extends Controller
             'sort_order' => $maxOrder + 1,
             'is_archived' => false,
         ]);
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'category' => $category,
+                'message' => 'Area created successfully.',
+            ], 201);
+        }
 
         return back()->with('success', 'Area created successfully.');
     }

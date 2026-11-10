@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { Head, Link, router } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
-import { formatTime12Hour } from '@/utils/date';
+import { formatDateWithDay, formatTime12Hour } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Sun,
@@ -246,7 +246,7 @@ const toggleTask = (taskId: number) => {
                                 >
                                     <span class="font-medium text-neutral-900 dark:text-neutral-100 truncate">{{ task.title }}</span>
                                     <span class="text-rose-600 dark:text-rose-400 font-mono text-[11px] shrink-0 ml-2">
-                                        Due {{ task.due_date }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
+                                        Due {{ formatDateWithDay(task.due_date) }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
                                     </span>
                                 </div>
                             </div>
@@ -425,7 +425,7 @@ const toggleTask = (taskId: number) => {
                                 class="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 text-xs"
                             >
                                 <span class="font-medium text-neutral-900 dark:text-neutral-100 truncate">{{ t.title }}</span>
-                                <span class="text-neutral-500 font-mono text-[11px] ml-2 shrink-0">{{ t.due_date }}</span>
+                                <span class="text-neutral-500 font-mono text-[11px] ml-2 shrink-0">{{ formatDateWithDay(t.due_date) }}</span>
                             </div>
                         </div>
                     </div>

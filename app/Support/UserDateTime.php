@@ -145,4 +145,31 @@ class UserDateTime
 
         return "{$hour12}:{$minute} {$period}";
     }
+
+    /**
+     * Format a YYYY-MM-DD date with 3-letter abbreviated day of week (e.g. "Tue, 2026-11-10").
+     */
+    public static function formatDateWithDay(?string $date): ?string
+    {
+        if ($date === null || trim($date) === '') {
+            return null;
+        }
+
+        $clean = trim($date);
+        if (preg_match('/^[A-Za-z]{3},\s/', $clean)) {
+            return $clean;
+        }
+
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}/', $clean, $m)) {
+            return $clean;
+        }
+
+        try {
+            $carbon = Carbon::createFromFormat('Y-m-d', substr($m[0], 0, 10));
+
+            return $carbon->format('D, Y-m-d');
+        } catch (\Throwable) {
+            return $clean;
+        }
+    }
 }

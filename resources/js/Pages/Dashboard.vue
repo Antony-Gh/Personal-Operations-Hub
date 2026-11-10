@@ -2,7 +2,7 @@
 import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { Category, PageProps, Project, Task } from '@/types';
-import { formatTime12Hour, getLocalDateString } from '@/utils/date';
+import { formatDateWithDay, formatTime12Hour, getLocalDateString } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Calendar as CalendarIcon,
@@ -319,7 +319,7 @@ const recordBadHabitCheckIn = (badHabitId: number, status: 'clean' | 'minor_slip
                                     <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate">{{ task.title }}</span>
                                 </div>
                                 <span class="text-[10px] text-rose-600 dark:text-rose-400 shrink-0">
-                                    Due {{ task.due_date }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
+                                    Due {{ formatDateWithDay(task.due_date) }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
                                 </span>
                             </div>
                         </div>

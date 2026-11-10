@@ -4,8 +4,9 @@ import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import axios from 'axios';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import TaskKanbanBoard from '@/Components/TaskKanbanBoard.vue';
+import WeekdaySelector from '@/Components/WeekdaySelector.vue';
 import { PageProps, Project, Tag, Task, TaskReminderPreset } from '@/types';
-import { formatTime12Hour, getLocalDateTimeInputValue, isOverdueLocal } from '@/utils/date';
+import { formatDateWithDay, formatTime12Hour, getLocalDateTimeInputValue, isOverdueLocal } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Search,
@@ -855,7 +856,7 @@ const saveTask = () => {
                                                     : 'text-neutral-700 dark:text-neutral-300'
                                             "
                                         >
-                                            {{ task.due_date }}<template v-if="task.due_time"> | {{ formatTime12Hour(task.due_time) }}</template>
+                                            {{ formatDateWithDay(task.due_date) }}<template v-if="task.due_time"> | {{ formatTime12Hour(task.due_time) }}</template>
                                         </span>
                                     </div>
                                     <span v-else class="text-neutral-400">-</span>
@@ -1042,7 +1043,7 @@ const saveTask = () => {
                             </div>
                         </div>
 
-                        <div class="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <!-- Priority -->
                             <div>
                                 <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Priority</label>
@@ -1070,25 +1071,28 @@ const saveTask = () => {
                                     <option value="deferred">Deferred</option>
                                 </select>
                             </div>
+                        </div>
 
-                            <!-- Due Date -->
-                            <div>
-                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Due Date</label>
-                                <input
-                                    v-model="taskForm.due_date"
-                                    type="date"
-                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
-                                />
-                            </div>
+                        <!-- Due Date with Current Week Day Calculator -->
+                        <div class="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200 dark:border-neutral-800/80 space-y-3">
+                            <WeekdaySelector
+                                v-model="taskForm.due_date"
+                                label="Due Date (Pick day in current week to auto-calculate)"
+                            />
 
                             <!-- Due Time -->
-                            <div>
-                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 mb-1">Due Time</label>
-                                <input
-                                    v-model="taskForm.due_time"
-                                    type="time"
-                                    class="w-full text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white"
-                                />
+                            <div class="pt-2 border-t border-neutral-200 dark:border-neutral-800 flex items-center justify-between gap-3 flex-wrap">
+                                <label class="block font-medium text-neutral-700 dark:text-neutral-300 text-xs shrink-0">Due Time (Optional)</label>
+                                <div class="flex items-center gap-2">
+                                    <input
+                                        v-model="taskForm.due_time"
+                                        type="time"
+                                        class="text-xs rounded-lg border-neutral-200 dark:border-neutral-800 dark:bg-neutral-900 dark:text-white py-1"
+                                    />
+                                    <span v-if="taskForm.due_time" class="text-[11px] font-mono font-medium text-neutral-600 dark:text-neutral-400">
+                                        {{ formatTime12Hour(taskForm.due_time) }}
+                                    </span>
+                                </div>
                             </div>
                         </div>
 

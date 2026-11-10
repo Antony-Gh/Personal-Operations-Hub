@@ -5,7 +5,7 @@ import axios from 'axios';
 import { PageProps } from '@/types';
 import { useTheme } from '@/composables/useTheme';
 import { useFocusTimer } from '@/composables/useFocusTimer';
-import { formatTime12Hour } from '@/utils/date';
+import { formatDateWithDay, formatTime12Hour } from '@/utils/date';
 import { previewNaturalTaskTokens } from '@/utils/naturalTaskParser';
 import {
     Search,
@@ -205,7 +205,7 @@ const flattenedItems = computed(() => {
 
     for (const t of remoteResults.value.tasks) {
         const timePart = t.due_time ? ` ${formatTime12Hour(t.due_time)}` : '';
-        const duePart = t.due_date ? `Due ${t.due_date}${timePart}` : (t.due_time ? `Due ${formatTime12Hour(t.due_time)}` : null);
+        const duePart = t.due_date ? `Due ${formatDateWithDay(t.due_date)}${timePart}` : (t.due_time ? `Due ${formatTime12Hour(t.due_time)}` : null);
         list.push({
             id: `task-${t.id}`,
             group: 'Tasks',
@@ -230,7 +230,7 @@ const flattenedItems = computed(() => {
 
     for (const m of remoteResults.value.milestones) {
         const mTimePart = m.due_time ? ` ${formatTime12Hour(m.due_time)}` : '';
-        const mDuePart = m.due_date ? `Due ${m.due_date}${mTimePart}` : (m.due_time ? `Due ${formatTime12Hour(m.due_time)}` : null);
+        const mDuePart = m.due_date ? `Due ${formatDateWithDay(m.due_date)}${mTimePart}` : (m.due_time ? `Due ${formatTime12Hour(m.due_time)}` : null);
         list.push({
             id: `milestone-${m.id}`,
             group: 'Milestones',

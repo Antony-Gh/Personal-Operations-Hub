@@ -28,6 +28,7 @@ class ProjectMilestone extends Model
 
     protected $appends = [
         'formatted_due_time',
+        'formatted_due_date',
     ];
 
     protected function casts(): array
@@ -79,5 +80,23 @@ class ProjectMilestone extends Model
     public function dueTimeAmPm(): ?string
     {
         return UserDateTime::formatTimeAmPm($this->due_time);
+    }
+
+    /**
+     * Get the formatted due date with day of week (e.g., Tue, 2026-11-10).
+     */
+    protected function formattedDueDate(): Attribute
+    {
+        return Attribute::make(
+            get: fn (mixed $value, array $attributes): ?string => UserDateTime::formatDateWithDay($attributes['due_date'] ?? null),
+        );
+    }
+
+    /**
+     * Helper method to get the milestone due date with day of week.
+     */
+    public function dueDateWithDay(): ?string
+    {
+        return UserDateTime::formatDateWithDay($this->due_date?->toDateString());
     }
 }

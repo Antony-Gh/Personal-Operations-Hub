@@ -94,5 +94,47 @@ test('Tasks Index returns formatted due time in task payload for frontend AM/PM 
             ->has('tasks.data', 1)
             ->where('tasks.data.0.due_time', '15:30')
             ->where('tasks.data.0.formatted_due_time', '3:30 PM')
+            ->where('tasks.data.0.formatted_due_date', 'Tue, 2026-11-10')
         );
+});
+
+test('UserDateTime formatDateWithDay correctly adds 3-letter day of week to date', function (): void {
+    expect(UserDateTime::formatDateWithDay(null))->toBeNull();
+    expect(UserDateTime::formatDateWithDay(''))->toBeNull();
+    expect(UserDateTime::formatDateWithDay('2026-11-10'))->toBe('Tue, 2026-11-10');
+    expect(UserDateTime::formatDateWithDay('2026-11-13'))->toBe('Fri, 2026-11-13');
+    expect(UserDateTime::formatDateWithDay('2026-11-14'))->toBe('Sat, 2026-11-14');
+    expect(UserDateTime::formatDateWithDay('2026-11-15'))->toBe('Sun, 2026-11-15');
+    expect(UserDateTime::formatDateWithDay('Sat, 2026-11-14'))->toBe('Sat, 2026-11-14');
+});
+
+test('Task formatted_due_date attribute and dueDateWithDay method format due date with day of week', function (): void {
+    $user = User::factory()->create();
+
+    $task = Task::factory()->create([
+        'user_id' => $user->id,
+        'title' => 'Sprint Planning',
+        'due_date' => '2026-11-10',
+    ]);
+
+    expect($task->formatted_due_date)->toBe('Tue, 2026-11-10');
+    expect($task->dueDateWithDay())->toBe('Tue, 2026-11-10');
+    expect($task->toArray())->toHaveKey('formatted_due_date', 'Tue, 2026-11-10');
+});
+
+test('ProjectMilestone formatted_due_date attribute and dueDateWithDay method format due date with day of week', function (): void {
+    $user = User::factory()->create();
+    $project = Project::factory()->create(['user_id' => $user->id]);
+
+    $milestone = ProjectMilestone::create([
+        'project_id' => $project->id,
+        'title' => 'Milestone Beta',
+        'due_date' => '2026-11-13',
+        'is_completed' => false,
+        'sort_order' => 1,
+    ]);
+
+    expect($milestone->formatted_due_date)->toBe('Fri, 2026-11-13');
+    expect($milestone->dueDateWithDay())->toBe('Fri, 2026-11-13');
+    expect($milestone->toArray())->toHaveKey('formatted_due_date', 'Fri, 2026-11-13');
 });

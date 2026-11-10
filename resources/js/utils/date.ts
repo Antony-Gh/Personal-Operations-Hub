@@ -133,4 +133,118 @@ export function formatTime12Hour(timeStr?: string | null): string {
     return `${hour12}:${minute} ${period}`;
 }
 
+export const DAY_NAMES_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+export const DAY_NAMES_FULL = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'] as const;
+
+export interface WeekDayOption {
+    dayIndex: number;
+    dayName: string;
+    fullName: string;
+    dayNumber: string;
+    dateStr: string;
+    formatted: string;
+    isToday: boolean;
+}
+
+/**
+ * Returns the 3-letter abbreviated day of week for a YYYY-MM-DD date string (e.g. "Tue").
+ */
+export function getDayOfWeekName(dateStr?: string | null): string {
+    if (!dateStr) return '';
+    const clean = String(dateStr).trim().slice(0, 10);
+    const parts = clean.split('-').map(Number);
+    if (parts.length < 3 || parts.some(isNaN)) return '';
+    const [year, month, day] = parts;
+    const anchor = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+    return DAY_NAMES_SHORT[anchor.getUTCDay()] || '';
+}
+
+/**
+ * Format a YYYY-MM-DD date with 3-letter day of week (e.g., "Tue, 2026-11-10").
+ */
+export function formatDateWithDay(dateStr?: string | null): string {
+    if (!dateStr) return '';
+    const clean = String(dateStr).trim();
+    if (!clean) return '';
+    if (/^[A-Za-z]{3},\s/.test(clean)) return clean;
+    const day = getDayOfWeekName(clean);
+    return day ? `${day}, ${clean}` : clean;
+}
+
+/**
+ * Calculate the date (YYYY-MM-DD) for a chosen day of week in the current week.
+ */
+export function getDateForDayInCurrentWeek(
+    targetDay: number | string,
+    todayDateStr?: string | null,
+    weekStart: number = 1
+): string {
+    const baseDate = todayDateStr || getLocalDateString();
+    const [year, month, day] = baseDate.split('-').map(Number);
+    const anchor = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+    const currentDayOfWeek = anchor.getUTCDay();
+
+    let targetIndex: number;
+    if (typeof targetDay === 'string') {
+        const lower = targetDay.toLowerCase().slice(0, 3);
+        const map: Record<string, number> = {
+            sun: 0,
+            mon: 1,
+            tue: 2,
+            wed: 3,
+            thu: 4,
+            fri: 5,
+            sat: 6,
+        };
+        targetIndex = map[lower] ?? 1;
+    } else {
+        targetIndex = ((targetDay % 7) + 7) % 7;
+    }
+
+    const start = weekStart === 0 ? 0 : 1;
+    const currentOffsetFromStart = (currentDayOfWeek - start + 7) % 7;
+    const targetOffsetFromStart = (targetIndex - start + 7) % 7;
+    const diff = targetOffsetFromStart - currentOffsetFromStart;
+
+    return addDaysToLocalDate(baseDate, diff);
+}
+
+/**
+ * Returns all 7 days of the current week with dates, day numbers, names, and today status.
+ */
+export function getCurrentWeekDays(
+    todayDateStr?: string | null,
+    weekStart: number = 1
+): WeekDayOption[] {
+    const baseDate = todayDateStr || getLocalDateString();
+    const [year, month, day] = baseDate.split('-').map(Number);
+    const anchor = new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+    const currentDayOfWeek = anchor.getUTCDay();
+
+    const start = weekStart === 0 ? 0 : 1;
+    const currentOffsetFromStart = (currentDayOfWeek - start + 7) % 7;
+    const weekStartDate = addDaysToLocalDate(baseDate, -currentOffsetFromStart);
+
+    const result: WeekDayOption[] = [];
+    for (let i = 0; i < 7; i++) {
+        const dateStr = addDaysToLocalDate(weekStartDate, i);
+        const [y, m, d] = dateStr.split('-').map(Number);
+        const dAnchor = new Date(Date.UTC(y, (m || 1) - 1, d || 1));
+        const dayIdx = dAnchor.getUTCDay();
+
+        result.push({
+            dayIndex: dayIdx,
+            dayName: DAY_NAMES_SHORT[dayIdx],
+            fullName: DAY_NAMES_FULL[dayIdx],
+            dayNumber: String(d),
+            dateStr,
+            formatted: `${DAY_NAMES_SHORT[dayIdx]}, ${dateStr}`,
+            isToday: dateStr === baseDate,
+        });
+    }
+
+    return result;
+}
+
+
 

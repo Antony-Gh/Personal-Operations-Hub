@@ -2,7 +2,8 @@
 import { ref, computed, watch } from 'vue';
 import { useForm, usePage } from '@inertiajs/vue3';
 import { PageProps, TaskReminderPreset } from '@/types';
-import { getLocalDateString } from '@/utils/date';
+import WeekdaySelector from '@/Components/WeekdaySelector.vue';
+import { formatTime12Hour, getLocalDateString } from '@/utils/date';
 import { previewNaturalTaskTokens } from '@/utils/naturalTaskParser';
 import {
     X,
@@ -251,22 +252,24 @@ const submitPhone = () => {
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-2 gap-3">
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Due Date</label>
-                            <input
-                                v-model="taskForm.due_date"
-                                type="date"
-                                class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
-                            />
-                        </div>
-                        <div>
-                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Due Time (Optional)</label>
-                            <input
-                                v-model="taskForm.due_time"
-                                type="time"
-                                class="w-full text-sm rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white focus:border-indigo-500 focus:ring-indigo-500"
-                            />
+                    <!-- Due Date with Weekday Auto-Calculator -->
+                    <div class="p-3 rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-800 space-y-3">
+                        <WeekdaySelector
+                            v-model="taskForm.due_date"
+                            label="Due Date (Pick day in current week)"
+                        />
+                        <div class="pt-2 border-t border-gray-200 dark:border-gray-700/60 flex items-center justify-between gap-3 flex-wrap">
+                            <label class="block text-xs font-medium text-gray-700 dark:text-gray-300">Due Time (Optional)</label>
+                            <div class="flex items-center gap-2">
+                                <input
+                                    v-model="taskForm.due_time"
+                                    type="time"
+                                    class="text-xs rounded-lg border-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-white py-1"
+                                />
+                                <span v-if="taskForm.due_time" class="text-[11px] font-mono text-gray-500 dark:text-gray-400">
+                                    {{ formatTime12Hour(taskForm.due_time) }}
+                                </span>
+                            </div>
                         </div>
                     </div>
 

@@ -3,7 +3,7 @@ import { ref, computed } from 'vue';
 import { Head, router, useForm, usePage } from '@inertiajs/vue3';
 import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout.vue';
 import { CalendarEvent, DailyPlan, PageProps, PhoneUsageLog, Task } from '@/types';
-import { addDaysToLocalDate, formatTime12Hour, getLocalDateString } from '@/utils/date';
+import { addDaysToLocalDate, formatDateWithDay, formatTime12Hour, getLocalDateString } from '@/utils/date';
 import { useFocusTimer } from '@/composables/useFocusTimer';
 import {
     Sun,
@@ -557,7 +557,7 @@ const timelineByHour = computed(() => {
                                 <div class="min-w-0">
                                     <span class="font-medium text-neutral-800 dark:text-neutral-200 truncate block">{{ task.title }}</span>
                                     <span class="text-[10px] text-neutral-400">
-                                        {{ task.category?.name || 'No Category' }} &bull; Due {{ task.due_date || 'No Date' }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
+                                        {{ task.category?.name || 'No Category' }} &bull; Due {{ formatDateWithDay(task.due_date) || 'No Date' }}<template v-if="task.due_time"> {{ formatTime12Hour(task.due_time) }}</template>
                                     </span>
                                 </div>
                                 <button

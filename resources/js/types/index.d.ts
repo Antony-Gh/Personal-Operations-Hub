@@ -117,6 +117,7 @@ export interface Task {
     due_date: string | null;
     due_time?: string | null;
     formatted_due_time?: string | null;
+    formatted_due_date?: string | null;
     reminder_preset?: TaskReminderPreset | null;
     remind_at?: string | null;
     custom_reminder_times?: string[] | null;
@@ -159,6 +160,7 @@ export interface ProjectMilestone {
     due_date: string | null;
     due_time?: string | null;
     formatted_due_time?: string | null;
+    formatted_due_date?: string | null;
     reminders_enabled?: boolean;
     reminder_offsets?: number[] | null;
     is_completed: boolean;

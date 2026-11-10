@@ -19,7 +19,7 @@
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-        <!-- Theme Initialization (Pre-render to prevent FOUC) -->
+        <!-- Theme Initialization (Pre-render to prevent FOUC & style scrollbars) -->
         <script>
             (function() {
                 try {
@@ -27,8 +27,10 @@
                     const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                     if (theme === 'dark' || (theme === 'system' && prefersDark)) {
                         document.documentElement.classList.add('dark');
+                        document.documentElement.style.colorScheme = 'dark';
                     } else {
                         document.documentElement.classList.remove('dark');
+                        document.documentElement.style.colorScheme = 'light';
                     }
                 } catch (e) {}
             })();

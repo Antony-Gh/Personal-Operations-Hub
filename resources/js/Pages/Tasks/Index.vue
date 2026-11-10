@@ -714,10 +714,9 @@ const saveTask = () => {
                                         type="checkbox"
                                         v-model="selectAll"
                                         @change="toggleSelectAll"
-                                        class="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                                        class="rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-indigo-600 focus:ring-indigo-500 dark:focus:ring-offset-neutral-900"
                                     />
                                 </th>
-                                <th class="p-3 w-8"></th>
                                 <th class="p-3">Title</th>
                                 <th class="p-3">Area</th>
                                 <th class="p-3">Project</th>
@@ -729,7 +728,7 @@ const saveTask = () => {
                         </thead>
                         <tbody class="divide-y divide-neutral-100 dark:divide-neutral-800">
                             <tr v-if="tasks.data.length === 0">
-                                <td colspan="9" class="p-8 text-center text-neutral-400">
+                                <td colspan="8" class="p-8 text-center text-neutral-400">
                                     No tasks match your filter criteria.
                                 </td>
                             </tr>
@@ -738,26 +737,14 @@ const saveTask = () => {
                                 :key="task.id"
                                 class="hover:bg-neutral-50/70 dark:hover:bg-neutral-800/40 transition group"
                             >
-                                <!-- Checkbox for selection -->
-                                <td class="p-3">
+                                <!-- Checkbox for selection (Box 1 - dark background on dark theme) -->
+                                <td class="p-3 w-8">
                                     <input
                                         type="checkbox"
                                         :value="task.id"
                                         v-model="selectedTaskIds"
-                                        class="rounded border-neutral-300 text-indigo-600 focus:ring-indigo-500"
+                                        class="rounded border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-indigo-600 focus:ring-indigo-500 dark:focus:ring-offset-neutral-900"
                                     />
-                                </td>
-
-                                <!-- Status Toggle Checkbox -->
-                                <td class="p-3">
-                                    <button
-                                        type="button"
-                                        @click="toggleTask(task)"
-                                        class="w-4 h-4 rounded border flex items-center justify-center transition"
-                                        :class="task.status === 'completed' ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-neutral-300 dark:border-neutral-600 hover:border-indigo-500'"
-                                    >
-                                        <Check v-if="task.status === 'completed'" class="w-3 h-3" />
-                                    </button>
                                 </td>
 
                                 <!-- Task Title, Next Action & Checklists -->
@@ -868,41 +855,62 @@ const saveTask = () => {
                                     </div>
                                 </td>
 
-                                <!-- Row Actions -->
+                                <!-- Row Actions & Right-most Status Completion Toggle -->
                                 <td class="p-3 text-right whitespace-nowrap">
-                                    <div class="flex items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
+                                    <div class="flex items-center justify-end gap-1.5">
+                                        <!-- Secondary actions (Focus, Edit, Duplicate, Delete) -->
+                                        <div class="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition">
+                                            <button
+                                                v-if="task.status !== 'completed'"
+                                                type="button"
+                                                @click="launchFocusForTask(task)"
+                                                class="p-1 rounded text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                                                title="Start Focus Timer"
+                                            >
+                                                <Timer class="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                @click="openEditModal(task)"
+                                                class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                                                title="Edit task"
+                                            >
+                                                <Edit3 class="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                @click="duplicateTask(task)"
+                                                class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+                                                title="Duplicate task"
+                                            >
+                                                <Copy class="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                type="button"
+                                                @click="deleteTask(task)"
+                                                class="p-1 rounded text-neutral-400 hover:text-rose-500"
+                                                title="Delete task"
+                                            >
+                                                <Trash2 class="w-3.5 h-3.5" />
+                                            </button>
+                                        </div>
+
+                                        <!-- Right-most Status Toggle Button -->
                                         <button
-                                            v-if="task.status !== 'completed'"
                                             type="button"
-                                            @click="launchFocusForTask(task)"
-                                            class="p-1 rounded text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                                            title="Start Focus Timer"
+                                            @click="toggleTask(task)"
+                                            class="p-1.5 rounded-lg border transition flex items-center justify-center shrink-0 shadow-xs"
+                                            :class="
+                                                task.status === 'completed'
+                                                    ? 'border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 hover:bg-rose-100 dark:hover:bg-rose-900/60'
+                                                    : 'border-emerald-300 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/60'
+                                            "
+                                            :title="task.status === 'completed' ? 'Task is done — click to mark not done' : 'Click to mark task as done'"
                                         >
-                                            <Timer class="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            @click="openEditModal(task)"
-                                            class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
-                                            title="Edit task"
-                                        >
-                                            <Edit3 class="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            @click="duplicateTask(task)"
-                                            class="p-1 rounded text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
-                                            title="Duplicate task"
-                                        >
-                                            <Copy class="w-3.5 h-3.5" />
-                                        </button>
-                                        <button
-                                            type="button"
-                                            @click="deleteTask(task)"
-                                            class="p-1 rounded text-neutral-400 hover:text-rose-500"
-                                            title="Delete task"
-                                        >
-                                            <Trash2 class="w-3.5 h-3.5" />
+                                            <!-- When task is done: false icon (X) to make not done again -->
+                                            <X v-if="task.status === 'completed'" class="w-3.5 h-3.5 stroke-[2.5]" />
+                                            <!-- When task is not done: right symbol (Check) to make done -->
+                                            <Check v-else class="w-3.5 h-3.5 stroke-[2.5]" />
                                         </button>
                                     </div>
                                 </td>

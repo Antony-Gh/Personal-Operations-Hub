@@ -82,3 +82,22 @@ body,
     scrollbar-width: none; /* Firefox */
 }
 
+/* Dark theme styling for native form inputs (checkboxes, radio buttons) */
+html.dark input[type="checkbox"],
+html.dark input[type="radio"] {
+    background-color: #171717;
+    border-color: #404040;
+}
+
+html.dark input[type="checkbox"]:checked,
+html.dark input[type="radio"]:checked {
+    background-color: #4f46e5;
+    border-color: #4f46e5;
+}
+
+html.dark input[type="checkbox"]:focus,
+html.dark input[type="radio"]:focus {
+    --tw-ring-offset-color: #0a0a0a;
+}
+
+

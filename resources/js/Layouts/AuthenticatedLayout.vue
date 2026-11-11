@@ -8,6 +8,8 @@ import NotificationCenter from '@/Components/NotificationCenter.vue';
 import MiniFocusTimer from '@/Components/MiniFocusTimer.vue';
 import CommandPalette from '@/Components/CommandPalette.vue';
 import MobileConnectModal from '@/Components/MobileConnectModal.vue';
+import ToastContainer from '@/Components/ToastContainer.vue';
+import { useToast } from '@/composables/useToast';
 import {
     LayoutDashboard,
     Sun,
@@ -83,91 +85,34 @@ const openQuickAdd = (tab: 'task' | 'project' | 'category' | 'phone' = 'task') =
     isQuickAddOpen.value = true;
 };
 
-// Toast Notifications (Auto-dismissing)
-const toast = ref<{
-    type: 'success' | 'error';
-    message: string;
-    id: number;
-} | null>(null);
-let toastTimer: ReturnType<typeof setTimeout> | null = null;
-
-const dismissToast = () => {
-    if (toastTimer) {
-        clearTimeout(toastTimer);
-        toastTimer = null;
-    }
-    toast.value = null;
-};
-
-const showToast = (type: 'success' | 'error', message: string) => {
-    dismissToast();
-    const id = Date.now();
-    toast.value = { type, message, id };
-    toastTimer = setTimeout(() => {
-        if (toast.value?.id === id) {
-            toast.value = null;
-        }
-    }, 4500);
-};
+// Multi-Toast Queue Notifications
+const { addToast } = useToast();
 
 watch(
-    () => [page.props.flash?.success, page.props.flash?.error],
-    ([newSuccess, newError]) => {
-        if (newSuccess) {
-            showToast('success', String(newSuccess));
-        } else if (newError) {
-            showToast('error', String(newError));
+    () => page.props.flash,
+    (flash) => {
+        if (!flash) return;
+        if (flash.success) {
+            addToast({ message: String(flash.success), type: 'success' });
+        }
+        if (flash.error) {
+            addToast({ message: String(flash.error), type: 'error' });
+        }
+        if (flash.warning) {
+            addToast({ message: String(flash.warning), type: 'warning' });
+        }
+        if (flash.info) {
+            addToast({ message: String(flash.info), type: 'info' });
         }
     },
-    { immediate: true }
+    { deep: true, immediate: true }
 );
-
-onUnmounted(() => {
-    if (toastTimer) {
-        clearTimeout(toastTimer);
-    }
-});
 </script>
 
 <template>
     <div class="h-screen max-h-screen overflow-hidden bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 flex flex-col font-sans transition-colors duration-200">
-        <!-- Floating Top Flash Toast (Auto-dismissing) -->
-        <Transition
-            enter-active-class="transition duration-300 ease-out"
-            enter-from-class="opacity-0 -translate-y-4 scale-95"
-            enter-to-class="opacity-100 translate-y-0 scale-100"
-            leave-active-class="transition duration-200 ease-in"
-            leave-from-class="opacity-100 translate-y-0 scale-100"
-            leave-to-class="opacity-0 -translate-y-4 scale-95"
-        >
-            <div
-                v-if="toast"
-                class="fixed top-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] pointer-events-auto"
-            >
-                <div
-                    class="rounded-xl px-4 py-3 shadow-xl backdrop-blur-md border flex items-center justify-between gap-3 text-xs"
-                    :class="
-                        toast.type === 'success'
-                            ? 'bg-white/95 dark:bg-neutral-900/95 border-emerald-500/30 text-emerald-900 dark:text-emerald-200 shadow-emerald-500/10'
-                            : 'bg-white/95 dark:bg-neutral-900/95 border-rose-500/30 text-rose-900 dark:text-rose-200 shadow-rose-500/10'
-                    "
-                >
-                    <div class="flex items-center gap-2.5 min-w-0">
-                        <CheckCircle2 v-if="toast.type === 'success'" class="w-4 h-4 text-emerald-500 shrink-0" />
-                        <AlertCircle v-else class="w-4 h-4 text-rose-500 shrink-0" />
-                        <span class="font-medium truncate">{{ toast.message }}</span>
-                    </div>
-                    <button
-                        type="button"
-                        @click="dismissToast"
-                        class="p-1 rounded-md text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 transition shrink-0"
-                        title="Dismiss alert"
-                    >
-                        <X class="w-3.5 h-3.5" />
-                    </button>
-                </div>
-            </div>
-        </Transition>
+        <!-- Floating Multi-Toast Stack (Auto-dismissing with Queue & Pause-on-hover) -->
+        <ToastContainer />
 
         <div class="flex flex-1 overflow-hidden">
             <!-- Desktop Sidebar -->

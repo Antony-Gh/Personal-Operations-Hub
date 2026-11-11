@@ -412,7 +412,9 @@ export type PageProps<
     };
     activeFocusSession?: ActiveFocusSession | null;
     flash: {
-        success: string | null;
-        error: string | null;
+        success?: string | null;
+        error?: string | null;
+        warning?: string | null;
+        info?: string | null;
     };
 };

@@ -20,6 +20,7 @@ import {
     Timer,
     AlertTriangle,
     X,
+    Sparkles,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -71,6 +72,22 @@ const goToToday = () => {
 };
 
 // Task Operations
+const isImporting = ref(false);
+
+const importAllDueTasks = (includeOverdue = false) => {
+    isImporting.value = true;
+    router.post(
+        route('my-day.import-due-tasks', props.dailyPlan.id),
+        { include_overdue: includeOverdue },
+        {
+            preserveScroll: true,
+            onFinish: () => {
+                isImporting.value = false;
+            },
+        }
+    );
+};
+
 const addTaskToPlan = (taskId: number, isPriority = false) => {
     router.post(
         route('my-day.add-task', props.dailyPlan.id),
@@ -345,7 +362,21 @@ const timelineByHour = computed(() => {
                         <!-- Empty State -->
                         <div v-if="plannedTasks.length === 0" class="text-center py-10 px-4 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl text-neutral-400 text-xs">
                             <ListTodo class="w-8 h-8 mx-auto mb-2 text-neutral-300 dark:text-neutral-700" />
-                            No tasks planned for this day yet. Select from tasks due today below or add candidate tasks.
+                            <p class="mb-3">No tasks planned for this day yet.</p>
+                            <div v-if="unplannedDueTasks.length > 0">
+                                <button
+                                    type="button"
+                                    @click="importAllDueTasks(false)"
+                                    :disabled="isImporting"
+                                    class="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition disabled:opacity-50"
+                                >
+                                    <Sparkles class="w-4 h-4" />
+                                    <span>{{ isImporting ? 'Importing Tasks...' : `Import All ${unplannedDueTasks.length} Tasks Due Today` }}</span>
+                                </button>
+                            </div>
+                            <p v-else class="text-[11px] text-neutral-500">
+                                Select from available candidate tasks below or create a new task.
+                            </p>
                         </div>
 
                         <!-- Planned Task List -->
@@ -491,7 +522,7 @@ const timelineByHour = computed(() => {
 
                     <!-- Tasks Due on this date but not yet planned -->
                     <div v-if="unplannedDueTasks.length > 0" class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5">
-                        <div class="flex items-center justify-between mb-3">
+                        <div class="flex items-center justify-between mb-3 gap-2">
                             <div>
                                 <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">
                                     Due On This Date (Unplanned)
@@ -500,6 +531,15 @@ const timelineByHour = computed(() => {
                                     These tasks have a due date of today but are not added to your daily schedule yet
                                 </p>
                             </div>
+                            <button
+                                type="button"
+                                @click="importAllDueTasks(false)"
+                                :disabled="isImporting"
+                                class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition disabled:opacity-50 shrink-0"
+                            >
+                                <Sparkles class="w-3.5 h-3.5" />
+                                <span>{{ isImporting ? 'Importing...' : `Import All (${unplannedDueTasks.length})` }}</span>
+                            </button>
                         </div>
 
                         <div class="space-y-2">

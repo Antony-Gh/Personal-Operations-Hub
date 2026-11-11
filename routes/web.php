@@ -57,6 +57,7 @@ Route::middleware(['auth', 'verified'])->group(function (): void {
     Route::get('/my-day', [DailyPlanController::class, 'index'])->name('my-day.index');
     Route::put('/my-day/{dailyPlan}', [DailyPlanController::class, 'updatePlan'])->name('my-day.update');
     Route::post('/my-day/{dailyPlan}/tasks', [DailyPlanController::class, 'addTask'])->name('my-day.add-task');
+    Route::post('/my-day/{dailyPlan}/import-due-tasks', [DailyPlanController::class, 'importDueTasks'])->name('my-day.import-due-tasks');
     Route::post('/my-day/{dailyPlan}/tasks/{task}/priority', [DailyPlanController::class, 'togglePriority'])->name('my-day.toggle-priority');
     Route::patch('/my-day/{dailyPlan}/tasks/{task}/time-block', [DailyPlanController::class, 'updateTimeBlock'])->name('my-day.time-block');
     Route::delete('/my-day/{dailyPlan}/tasks/{task}', [DailyPlanController::class, 'removeTask'])->name('my-day.remove-task');

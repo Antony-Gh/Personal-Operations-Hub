@@ -450,8 +450,10 @@ const submitEvent = () => {
                             </button>
                         </div>
 
-                        <div v-if="itemsForSelectedDate.length === 0" class="py-6 text-center text-xs text-neutral-400">
-                            No events, milestones, or due tasks for this day.
+                        <div v-if="itemsForSelectedDate.length === 0" class="py-8 text-center border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl text-neutral-400 text-xs">
+                            <CalendarDays class="w-7 h-7 mx-auto mb-2 text-neutral-300 dark:text-neutral-700" />
+                            <p class="font-medium text-neutral-600 dark:text-neutral-400">No events or due tasks for this day.</p>
+                            <p class="text-[11px] text-neutral-400 dark:text-neutral-500 mt-0.5">Click "+ Add Event" above to schedule commitments.</p>
                         </div>
 
                         <div v-else class="space-y-2">

@@ -824,8 +824,34 @@ const saveTask = () => {
                                 </td>
 
                                 <!-- Status -->
-                                <td class="p-3 whitespace-nowrap capitalize text-neutral-600 dark:text-neutral-400">
-                                    {{ task.status.replace('_', ' ') }}
+                                <td class="p-3 whitespace-nowrap">
+                                    <span
+                                        v-if="task.status === 'waiting'"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 border border-amber-200/60 dark:border-amber-900/60"
+                                    >
+                                        <Lock class="w-2.5 h-2.5" />
+                                        Waiting
+                                    </span>
+                                    <span
+                                        v-else-if="task.status === 'in_progress'"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200/60 dark:border-blue-900/60"
+                                    >
+                                        <Clock class="w-2.5 h-2.5" />
+                                        In Progress
+                                    </span>
+                                    <span
+                                        v-else-if="task.status === 'completed'"
+                                        class="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200/60 dark:border-emerald-900/60"
+                                    >
+                                        <Check class="w-2.5 h-2.5" />
+                                        Completed
+                                    </span>
+                                    <span
+                                        v-else
+                                        class="capitalize text-neutral-600 dark:text-neutral-400 text-xs"
+                                    >
+                                        {{ task.status.replace('_', ' ') }}
+                                    </span>
                                 </td>
 
                                 <!-- Due Date & Duration -->

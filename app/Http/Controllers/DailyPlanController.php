@@ -200,6 +200,82 @@ class DailyPlanController extends Controller
         return back()->with('success', 'Task added to My Day.');
     }
 
+    public function importDueTasks(Request $request, DailyPlan $dailyPlan): RedirectResponse
+    {
+        $this->authorize('update', $dailyPlan);
+
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'task_ids' => 'nullable|array',
+            'task_ids.*' => [
+                'integer',
+                Rule::exists('tasks', 'id')->where('user_id', $user->id),
+            ],
+            'include_overdue' => 'nullable|boolean',
+        ]);
+
+        $alreadyPlannedTaskIds = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
+            ->pluck('task_id')
+            ->toArray();
+
+        $query = Task::where('user_id', $user->id)
+            ->where('status', '!=', 'completed')
+            ->whereNotIn('id', $alreadyPlannedTaskIds);
+
+        if (! empty($validated['task_ids'])) {
+            $query->whereIn('id', $validated['task_ids']);
+        } elseif (! empty($validated['include_overdue']) && $validated['include_overdue']) {
+            $query->where(function ($q) use ($dailyPlan): void {
+                $q->whereDate('due_date', '<=', $dailyPlan->date)
+                    ->orWhereNull('due_date');
+            });
+        } else {
+            $query->whereDate('due_date', $dailyPlan->date);
+        }
+
+        $tasksToImport = $query->orderByPriority()->orderBy('due_date', 'asc')->get();
+
+        if ($tasksToImport->isEmpty()) {
+            return back()->with('info', 'No matching tasks available to import.');
+        }
+
+        $maxSort = (int) (DailyPlanTask::where('daily_plan_id', $dailyPlan->id)->max('sort_order') ?? 0);
+        $currentPriorityCount = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
+            ->where('is_priority', true)
+            ->count();
+        $availablePrioritySlots = max(0, 3 - $currentPriorityCount);
+
+        $importedCount = 0;
+
+        DB::transaction(function () use ($tasksToImport, $dailyPlan, &$maxSort, &$availablePrioritySlots, &$importedCount): void {
+            foreach ($tasksToImport as $task) {
+                $maxSort++;
+                $shouldBePriority = false;
+
+                if ($availablePrioritySlots > 0 && in_array($task->priority, ['urgent', 'high'], true)) {
+                    $shouldBePriority = true;
+                    $availablePrioritySlots--;
+                }
+
+                DailyPlanTask::firstOrCreate(
+                    [
+                        'daily_plan_id' => $dailyPlan->id,
+                        'task_id' => $task->id,
+                    ],
+                    [
+                        'is_priority' => $shouldBePriority,
+                        'sort_order' => $maxSort,
+                    ]
+                );
+
+                $importedCount++;
+            }
+        });
+
+        return back()->with('success', "Imported {$importedCount} task(s) into My Day.");
+    }
+
     public function togglePriority(DailyPlan $dailyPlan, Task $task): RedirectResponse
     {
         $this->authorize('update', $dailyPlan);

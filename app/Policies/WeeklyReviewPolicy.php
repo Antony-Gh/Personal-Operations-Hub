@@ -22,4 +22,3 @@ class WeeklyReviewPolicy
         return $weeklyReview->user_id === $user->id;
     }
 }
-

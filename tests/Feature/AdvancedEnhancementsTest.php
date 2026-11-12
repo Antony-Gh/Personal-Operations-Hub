@@ -21,6 +21,10 @@ use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\File;
 use Inertia\Testing\AssertableInertia as Assert;
 
+afterEach(function (): void {
+    Carbon::setTestNow();
+});
+
 test('browserless windows toast channel dispatches when enabled and via test endpoint', function (): void {
     WindowsToastService::fake();
 
@@ -390,6 +394,8 @@ test('task dependencies prevent circular cycles auto-wait blocked tasks and auto
 });
 
 test('personal analytics page computes estimation accuracy deep work by area and screen time correlations', function (): void {
+    Carbon::setTestNow(Carbon::parse('2026-11-11 12:00:00', 'UTC'));
+
     $user = User::factory()->create();
     $user->ensureSetting()->update([
         'timezone' => 'UTC',

@@ -22,4 +22,3 @@ class PhoneUsageLogPolicy
         return $log->user_id === $user->id;
     }
 }
-

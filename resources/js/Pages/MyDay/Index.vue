@@ -75,6 +75,8 @@ const goToToday = () => {
 const isImporting = ref(false);
 
 const importAllDueTasks = (includeOverdue = false) => {
+    if (isImporting.value) return;
+
     isImporting.value = true;
     router.post(
         route('my-day.import-due-tasks', props.dailyPlan.id),

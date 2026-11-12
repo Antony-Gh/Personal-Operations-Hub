@@ -12,6 +12,8 @@ export interface ToastItem {
     remaining: number;
     timer?: ReturnType<typeof setTimeout> | null;
     timerStartedAt?: number;
+    isHovered?: boolean;
+    isFocused?: boolean;
 }
 
 const toasts = ref<ToastItem[]>([]);
@@ -25,13 +27,19 @@ export function useToast() {
             const item = toasts.value[index];
             if (item.timer) {
                 clearTimeout(item.timer);
+                item.timer = null;
             }
             toasts.value.splice(index, 1);
         }
     };
 
     const scheduleDismissal = (item: ToastItem) => {
-        if (item.duration <= 0) return;
+        if (item.duration <= 0 || item.remaining <= 0) return;
+
+        if (item.timer) {
+            clearTimeout(item.timer);
+            item.timer = null;
+        }
 
         item.timerStartedAt = Date.now();
         item.timer = setTimeout(() => {
@@ -46,15 +54,25 @@ export function useToast() {
         const id = 'toast_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
         const message = typeof payload === 'string' ? payload : payload.message;
         const type: ToastType = (typeof payload === 'string' ? typeOverride : payload.type) || 'info';
-        const duration = (typeof payload === 'object' && payload.duration !== undefined) ? payload.duration : DEFAULT_DURATION;
+        const duration = typeof payload === 'object' && payload.duration !== undefined ? payload.duration : DEFAULT_DURATION;
         const title = typeof payload === 'object' ? payload.title : undefined;
 
-        // Prevent exact duplicate message from stacking within 1 second
+        // Prevent exact duplicate (message + type) from stacking within 1 second
         const isDuplicate = toasts.value.some(
             (t) => t.message === message && t.type === type && Date.now() - t.createdAt < 1000
         );
         if (isDuplicate) {
             return '';
+        }
+
+        // Keep maximum visible queue
+        if (toasts.value.length >= MAX_TOASTS) {
+            const oldest = toasts.value[0];
+            if (oldest.timer) {
+                clearTimeout(oldest.timer);
+                oldest.timer = null;
+            }
+            toasts.value.shift();
         }
 
         const newItem: ToastItem = {
@@ -65,24 +83,28 @@ export function useToast() {
             duration,
             createdAt: Date.now(),
             remaining: duration,
+            isHovered: false,
+            isFocused: false,
         };
 
-        scheduleDismissal(newItem);
-
-        // Keep maximum visible queue
-        if (toasts.value.length >= MAX_TOASTS) {
-            const oldest = toasts.value[0];
-            if (oldest.timer) clearTimeout(oldest.timer);
-            toasts.value.shift();
-        }
-
         toasts.value.push(newItem);
+        const reactiveItem = toasts.value[toasts.value.length - 1];
+        scheduleDismissal(reactiveItem);
+
         return id;
     };
 
-    const pauseToast = (id: string) => {
+    const pauseToast = (id: string, reason: 'hover' | 'focus' = 'hover') => {
         const item = toasts.value.find((t) => t.id === id);
-        if (item && item.timer) {
+        if (!item) return;
+
+        if (reason === 'hover') {
+            item.isHovered = true;
+        } else {
+            item.isFocused = true;
+        }
+
+        if (item.timer) {
             clearTimeout(item.timer);
             item.timer = null;
             if (item.timerStartedAt) {
@@ -92,16 +114,37 @@ export function useToast() {
         }
     };
 
-    const resumeToast = (id: string) => {
+    const resumeToast = (id: string, reason: 'hover' | 'focus' = 'hover') => {
         const item = toasts.value.find((t) => t.id === id);
-        if (item && !item.timer && item.remaining > 0) {
+        if (!item) return;
+
+        if (reason === 'hover') {
+            item.isHovered = false;
+        } else {
+            item.isFocused = false;
+        }
+
+        if (!item.isHovered && !item.isFocused && !item.timer && item.duration > 0 && item.remaining > 0) {
             scheduleDismissal(item);
         }
     };
 
+    const resumeAllToasts = () => {
+        toasts.value.forEach((item) => {
+            item.isHovered = false;
+            item.isFocused = false;
+            if (!item.timer && item.duration > 0 && item.remaining > 0) {
+                scheduleDismissal(item);
+            }
+        });
+    };
+
     const clearToasts = () => {
         toasts.value.forEach((t) => {
-            if (t.timer) clearTimeout(t.timer);
+            if (t.timer) {
+                clearTimeout(t.timer);
+                t.timer = null;
+            }
         });
         toasts.value = [];
     };
@@ -112,6 +155,7 @@ export function useToast() {
         removeToast,
         pauseToast,
         resumeToast,
+        resumeAllToasts,
         clearToasts,
         success: (msg: string, duration?: number) => addToast({ message: msg, type: 'success', duration }),
         error: (msg: string, duration?: number) => addToast({ message: msg, type: 'error', duration }),
@@ -119,4 +163,3 @@ export function useToast() {
         info: (msg: string, duration?: number) => addToast({ message: msg, type: 'info', duration }),
     };
 }
-

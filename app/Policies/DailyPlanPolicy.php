@@ -22,4 +22,3 @@ class DailyPlanPolicy
         return $dailyPlan->user_id === $user->id;
     }
 }
-

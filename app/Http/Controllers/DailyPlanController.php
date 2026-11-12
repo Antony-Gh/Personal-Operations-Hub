@@ -9,6 +9,7 @@ use App\Models\PhoneUsageLog;
 use App\Models\Task;
 use App\Support\UserDateTime;
 use Carbon\Carbon;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -61,10 +62,11 @@ class DailyPlanController extends Controller
 
         $plannedTaskIds = $plannedTasks->pluck('id')->toArray();
 
-        // Tasks due on this date that are NOT yet in the daily plan
+        // Active eligible tasks due on this date that are NOT yet in the daily plan
         $unplannedDueTasks = Task::with(['category', 'project', 'tags'])
             ->where('user_id', $user->id)
-            ->where('due_date', $date)
+            ->whereDate('due_date', $date)
+            ->whereNotIn('status', ['completed', 'deferred'])
             ->whereNotIn('id', $plannedTaskIds)
             ->orderByPriority()
             ->get();
@@ -200,6 +202,9 @@ class DailyPlanController extends Controller
         return back()->with('success', 'Task added to My Day.');
     }
 
+    /**
+     * Atomically import eligible due or overdue tasks into a user's daily plan.
+     */
     public function importDueTasks(Request $request, DailyPlan $dailyPlan): RedirectResponse
     {
         $this->authorize('update', $dailyPlan);
@@ -210,68 +215,103 @@ class DailyPlanController extends Controller
             'task_ids' => 'nullable|array',
             'task_ids.*' => [
                 'integer',
-                Rule::exists('tasks', 'id')->where('user_id', $user->id),
+                Rule::exists('tasks', 'id')
+                    ->where('user_id', $user->id)
+                    ->whereNull('deleted_at'),
             ],
             'include_overdue' => 'nullable|boolean',
         ]);
 
-        $alreadyPlannedTaskIds = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
-            ->pluck('task_id')
-            ->toArray();
-
-        $query = Task::where('user_id', $user->id)
-            ->where('status', '!=', 'completed')
-            ->whereNotIn('id', $alreadyPlannedTaskIds);
-
-        if (! empty($validated['task_ids'])) {
-            $query->whereIn('id', $validated['task_ids']);
-        } elseif (! empty($validated['include_overdue']) && $validated['include_overdue']) {
-            $query->where(function ($q) use ($dailyPlan): void {
-                $q->whereDate('due_date', '<=', $dailyPlan->date)
-                    ->orWhereNull('due_date');
-            });
-        } else {
-            $query->whereDate('due_date', $dailyPlan->date);
+        $hasExplicitTaskIds = array_key_exists('task_ids', $validated) && is_array($validated['task_ids']);
+        if ($hasExplicitTaskIds && empty($validated['task_ids'])) {
+            return back()->with('info', 'No tasks were selected to import.');
         }
 
-        $tasksToImport = $query->orderByPriority()->orderBy('due_date', 'asc')->get();
+        $importedCount = DB::transaction(function () use ($dailyPlan, $user, $validated, $hasExplicitTaskIds): int {
+            if (DB::connection()->getDriverName() === 'sqlite') {
+                // Acquire SQLite's write lock upfront inside DEFERRED transactions to serialize
+                // concurrent readers before reading child rows, preventing stale-snapshot conflicts.
+                DB::table('daily_plans')
+                    ->where('id', $dailyPlan->id)
+                    ->update(['updated_at' => DB::raw('updated_at')]);
+            } else {
+                DailyPlan::whereKey($dailyPlan->id)->lockForUpdate()->first();
+            }
 
-        if ($tasksToImport->isEmpty()) {
+            $alreadyPlannedTaskIds = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
+                ->pluck('task_id')
+                ->all();
+
+            $planDate = $dailyPlan->date instanceof Carbon
+                ? $dailyPlan->date->toDateString()
+                : (string) $dailyPlan->date;
+
+            $query = Task::where('user_id', $user->id)
+                ->whereNotIn('status', ['completed', 'deferred'])
+                ->whereNotIn('id', $alreadyPlannedTaskIds);
+
+            if ($hasExplicitTaskIds) {
+                $selectedIds = array_values(array_unique(array_map('intval', $validated['task_ids'])));
+                $query->whereIn('id', $selectedIds);
+            } elseif (! empty($validated['include_overdue'])) {
+                $query->whereNotNull('due_date')
+                    ->whereDate('due_date', '<=', $planDate);
+            } else {
+                $query->whereDate('due_date', $planDate);
+            }
+
+            $tasksToImport = $query
+                ->orderByPriority()
+                ->orderBy('due_date', 'asc')
+                ->orderBy('id', 'asc')
+                ->get();
+
+            if ($tasksToImport->isEmpty()) {
+                return 0;
+            }
+
+            $nextSort = (int) (DailyPlanTask::where('daily_plan_id', $dailyPlan->id)->max('sort_order') ?? 0);
+            $currentPriorityCount = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
+                ->where('is_priority', true)
+                ->count();
+            $availablePrioritySlots = max(0, 3 - $currentPriorityCount);
+            $insertedCount = 0;
+
+            foreach ($tasksToImport as $task) {
+                $shouldBePriority = $availablePrioritySlots > 0 && $task->priority === 'high';
+                $candidateSort = $nextSort + 1;
+
+                try {
+                    $planTask = DailyPlanTask::firstOrCreate(
+                        [
+                            'daily_plan_id' => $dailyPlan->id,
+                            'task_id' => $task->id,
+                        ],
+                        [
+                            'is_priority' => $shouldBePriority,
+                            'sort_order' => $candidateSort,
+                        ]
+                    );
+
+                    if ($planTask->wasRecentlyCreated) {
+                        $nextSort = $candidateSort;
+                        $insertedCount++;
+
+                        if ($shouldBePriority) {
+                            $availablePrioritySlots--;
+                        }
+                    }
+                } catch (UniqueConstraintViolationException) {
+                    continue;
+                }
+            }
+
+            return $insertedCount;
+        }, attempts: 3);
+
+        if ($importedCount === 0) {
             return back()->with('info', 'No matching tasks available to import.');
         }
-
-        $maxSort = (int) (DailyPlanTask::where('daily_plan_id', $dailyPlan->id)->max('sort_order') ?? 0);
-        $currentPriorityCount = DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
-            ->where('is_priority', true)
-            ->count();
-        $availablePrioritySlots = max(0, 3 - $currentPriorityCount);
-
-        $importedCount = 0;
-
-        DB::transaction(function () use ($tasksToImport, $dailyPlan, &$maxSort, &$availablePrioritySlots, &$importedCount): void {
-            foreach ($tasksToImport as $task) {
-                $maxSort++;
-                $shouldBePriority = false;
-
-                if ($availablePrioritySlots > 0 && in_array($task->priority, ['urgent', 'high'], true)) {
-                    $shouldBePriority = true;
-                    $availablePrioritySlots--;
-                }
-
-                DailyPlanTask::firstOrCreate(
-                    [
-                        'daily_plan_id' => $dailyPlan->id,
-                        'task_id' => $task->id,
-                    ],
-                    [
-                        'is_priority' => $shouldBePriority,
-                        'sort_order' => $maxSort,
-                    ]
-                );
-
-                $importedCount++;
-            }
-        });
 
         return back()->with('success', "Imported {$importedCount} task(s) into My Day.");
     }

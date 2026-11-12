@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, onUnmounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { Link, usePage } from '@inertiajs/vue3';
 import { PageProps } from '@/types';
 import ApplicationLogo from '@/Components/ApplicationLogo.vue';
@@ -31,8 +31,6 @@ import {
     LogOut,
     User as UserIcon,
     Layers,
-    CheckCircle2,
-    AlertCircle,
     Smartphone,
 } from 'lucide-vue-next';
 import { useTheme, ThemePreference } from '@/composables/useTheme';

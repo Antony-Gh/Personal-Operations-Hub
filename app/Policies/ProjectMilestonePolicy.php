@@ -22,4 +22,3 @@ class ProjectMilestonePolicy
         return $milestone->project?->user_id === $user->id;
     }
 }
-

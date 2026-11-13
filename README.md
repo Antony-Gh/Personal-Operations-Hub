@@ -2,157 +2,119 @@
 
 A centralized, local-first personal productivity and operations platform built for a university student, software engineer, and team leader.
 
-Rather than a generic to-do list or cloud-dependent SaaS clone, **Personal Operations Hub** is designed around low cognitive load, intentional daily planning, domain customizability, local Windows background alarms & reminders, and sustainable, recovery-friendly routines.
+Rather than a generic to-do list or cloud-dependent SaaS clone, **Personal Operations Hub** is designed around low cognitive load, intentional daily planning, domain customizability, background reminders, robust SQLite concurrency, and cross-platform operational resilience.
 
 ---
 
-## Tech Stack (100% Local Windows Stack)
+## Architecture & Technology Stack
 
-- **Backend**: Laravel 13 (PHP 8.4)
-- **Frontend**: Vue 3.4 (Composition API) + TypeScript 5.6 + Inertia.js v2
-- **Styling & Icons**: Tailwind CSS 3 + `lucide-vue-next`
-- **Database & Queue**: SQLite (`database/database.sqlite` + Database Queue & Notifications)
-- **Background Runtime**: Laravel Scheduler (`schedule:work`) + Database Queue (`queue:work`) + Windows PowerShell 5.1 / Task Scheduler scripts
-- **Testing**: Pest PHP 3 & PHPUnit 11 (**79 automated tests, 410 assertions, 100% pass rate**)
-- **Asset Bundler & PWA**: Vite 8 + Local Web App Manifest & Service Worker
-
----
-
-## Core Features
-
-1. **Personalized Dashboard & Automated Briefings**
-   - **Today's Overview**: Tasks due today, overdue items, completed tasks, upcoming 7-day deadlines, Focus minutes logged today, and queued local reminders.
-   - **Morning Briefing & Weekly Digest (`/briefings`)**: Scheduled or on-demand briefings summarizing priorities, deadlines, active project progress, focus sessions, and habit streaks.
-   - **Habits & Spiritual Life Widget**: Quick one-click check-ins with live streak badges.
-   - **Phone Usage Widget**: Mindful leisure screen-time tracking against daily targets.
-
-2. **Local Alarms, Reminders & Notification Center**
-   - **Task Alarms**: Presets (`At due time`, `15m`, `30m`, `1h`, `1d`, `Custom datetime`), multiple reminder offsets per task, and automatic overdue alerts.
-   - **Project & Milestone Countdowns**: Configurable target countdowns (`7`, `3`, `1`, `0` days before deadline), overdue alerts, and milestone completion notifications.
-   - **In-App Notification Center**: Top-bar drawer with unread counter, category filters, **Snooze** (`15m`, `30m`, `1h`, `Tomorrow 09:00`), **Dismiss**, and one-click **Complete Task**.
-   - **Native Desktop Banners & Offline Audio**: Browser `Notification` API integration plus Web Audio API synthesized chimes (`Gentle Chime`, `Warm Bell`, `Soft Ping`, `Digital Alarm`) with volume control—zero external audio files or internet required.
-   - **Quiet Hours**: Suppresses standard alerts overnight while optionally allowing critical high-priority overrides.
-
-3. **Focus / Pomodoro Timer & Actual Duration Logging**
-   - Persistent top-bar **Mini Focus Timer** (`Focus`, `Short Break`, `Long Break`) backed by server timestamps (`focus_sessions`) so countdowns stay accurate across tab switches and reloads.
-   - Automatically logs earned focus minutes directly into linked `Task.actual_duration` without double counting.
-
-4. **Comprehensive Task Management & Kanban Board**
-   - Switch seamlessly between **List View** and **5-Column Interactive Kanban Board** (`Not Started`, `In Progress`, `Waiting`, `Deferred`, `Completed`) with drag-and-drop and keyboard/menu status controls.
-   - Semantic priority sorting (`High -> Medium -> Low`), checklists, tags, estimated vs. logged duration, and bulk operations.
-   - **Complete Recurring Task Engine**: Supports `daily`, `weekdays` (Mon–Fri), `weekly`, `monthly` (safe month-end handling), and custom `N`-day/week/month intervals with end dates or max occurrence limits, inheriting tags, checklists, and reminder presets.
-
-5. **Global Command Palette (`Ctrl+K` / `Cmd+K`)**
-   - Instant keyboard-driven search across tasks, projects, milestones, habits, navigation routes, and quick actions (start focus timer, open quick add, jump to briefings).
-
-6. **Interactive Calendar & `.ics` Integration**
-   - Monthly grid & agenda views aggregating calendar commitments, tasks with due dates/times, project deadlines, and milestones.
-   - **RFC 5545 `.ics` Export & Private Token Feed**: One-click `.ics` download plus a revocable, SHA-256 hashed private subscription URL (`/calendar/feed/{token}.ics`) with `VALARM` triggers for Thunderbird, Outlook, or LAN devices.
-
-7. **Habits, Streaks & Consistency Heatmap**
-   - Tracks **Current Streak**, **Best Streak**, **Weekly/Monthly Consistency %**, flexible weekly targets (e.g., 5 days/week without weekend streak loss), clickable 14-day history tiles, and a GitHub-style **Monthly Activity Heatmap** with 6-month momentum trends.
-
-8. **Timezone-Accurate Engine**
-   - Full IANA timezone support (`Settings -> Localization & Timezone`) with one-click browser timezone detection and automatic reminder resynchronization.
-
-9. **Automated Verified SQLite Backups & Safe Restore**
-   - Daily automated SQLite snapshots (`VACUUM INTO` + `PRAGMA integrity_check` + SHA-256 metadata sidecar) stored in `storage/app/backups/` with configurable retention pruning.
-   - Safe in-app restoration requiring explicit `RESTORE` confirmation and automatically capturing a `pre_restore` snapshot before restoring.
+- **Backend**: Laravel 12 (PHP 8.4)
+- **Frontend**: Vue 3.5 (Composition API) + TypeScript + Inertia.js v2
+- **Styling & UI**: Tailwind CSS 3 + Lucide Icons
+- **Database & Concurrency**: SQLite with Write-Ahead Logging (WAL mode), `busy_timeout = 5000ms`, `synchronous = NORMAL`
+- **Reverse Proxy**: Caddy (Automated Let's Encrypt / ZeroSSL TLS) or Nginx
+- **Containerization**: Multi-service Docker Compose (`app`, `queue`, `scheduler`, `caddy`)
+- **Testing**: Pest PHP & PHPUnit (**132 automated tests, 892 assertions, 100% pass rate**)
+- **Asset Bundler**: Vite 8 with Production Asset Optimization
 
 ---
 
-## Quick Start (Windows 10/11)
+## Platform Quickstart Matrix
 
-### 1. Install Dependencies & Initialize
+Choose the execution method that matches your environment:
+
+### Option 1: Native Windows Host (Recommended for Local Dev)
+
+Double-click `controller.bat` or run via PowerShell:
 
 ```powershell
-composer install
-npm install
-if (-not (Test-Path .env)) { Copy-Item .env.example .env; php artisan key:generate }
-php artisan migrate --force
-npm run build
-```
+# Interactive Unified Controller (34 operations covering servers, backups, and diagnostics):
+.\controller.bat
 
-### 2. Launching Operations via the Unified Controller
-
-The central entry point for managing Personal Operations Hub is the **Unified Controller**:
-
-```cmd
-:: Double-click controller.bat (auto-elevates to Administrator)
-controller.bat
-```
-```powershell
-# Or launch directly via PowerShell:
-powershell -ExecutionPolicy Bypass -File .\controller.ps1
-```
-*(Interactive menu with 34 operations covering development servers, background daemons, migrations, encrypted backups, mobile LAN access, and health diagnostics).*
-
-Or run individual scripts directly:
-```powershell
-# Interactive development mode (HTTP + Vite + Scheduler + Queue + Browser)
+# Or launch background services directly:
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1
 
-# Service status check
+# Check status:
 powershell -ExecutionPolicy Bypass -File .\scripts\start.ps1 -Status
 
-# Stop all services safely
+# Stop all services:
 powershell -ExecutionPolicy Bypass -File .\scripts\stop.ps1
 ```
 
-### 3. Headless Windows Background Mode & Auto-Start at Login
+### Option 2: Native Linux Host, macOS, or WSL
 
-Run Personal Operations Hub silently in the background without open terminal windows:
+Use the unified `./poh` CLI dispatcher or `controller.sh`:
 
-```powershell
-# Start headless HTTP server + Scheduler + Queue worker
-powershell -ExecutionPolicy Bypass -File .\scripts\start-background.ps1
+```bash
+# Initial bootstrapping:
+./poh setup
 
-# Check live PID status
-powershell -ExecutionPolicy Bypass -File .\scripts\start-background.ps1 -Status
+# Start background services (HTTP, Scheduler, Queue):
+./poh start
 
-# Stop headless workers
-powershell -ExecutionPolicy Bypass -File .\scripts\stop-background.ps1
+# Check service health and PID status:
+./poh status
 
-# Optional: Auto-start at Windows login via Task Scheduler
-powershell -ExecutionPolicy Bypass -File .\scripts\install-task-scheduler.ps1
+# Safe shutdown:
+./poh stop
+
+# Run automated test suite:
+./poh test
+```
+
+### Option 3: Docker Compose (Recommended for Production Self-Hosting)
+
+Spin up the complete 4-container stack with automated Let's Encrypt SSL:
+
+```bash
+# 1. Copy production environment configuration:
+cp .env.production.example .env
+
+# 2. Configure your domain and APP_KEY in .env
+
+# 3. Launch all containers:
+docker compose up -d
+
+# 4. Check container health:
+docker compose ps
 ```
 
 ---
 
-## Local Documentation Guides
+## Core Operations & CLI Commands
 
-- [Local Windows Setup & PWA Guide](docs/LOCAL_SETUP.md)
-- [Background Runner & Windows Task Scheduler Guide](docs/BACKGROUND_SCHEDULER.md)
-- [Alarms, Reminders & Notification System Guide](docs/NOTIFICATIONS.md)
-- [Calendar `.ics` Export & Local Subscription Guide](docs/CALENDAR_INTEGRATION.md)
-- [Automated SQLite Backups & Safe Restore Guide](docs/BACKUPS.md)
+Personal Operations Hub provides dedicated Artisan commands for system management:
 
----
-
-## Default Seeded Credentials (Fresh Seeded Install)
-
-- **Email**: `user@operations-hub.local`
-- **Password**: `password`
-
-*(Registration is disabled by default via `ALLOW_REGISTRATION=false` in `.env`.)*
+| Command | Purpose |
+| :--- | :--- |
+| `php artisan ops:status` | Displays live summary of tasks due today, habits, unread alerts, and backup health. |
+| `php artisan ops:backup-database` | Creates verified, atomic SQLite snapshot with SHA-256 metadata sidecar. |
+| `php artisan ops:restore-database` | Safely restores database with pre-restore safety snapshots and automatic rollback. |
+| `php artisan ops:decrypt-backup` | Decrypts authenticated AES-256 backup archives (`.enc`). |
+| `php artisan ops:quick-add` | Captures tasks quickly using natural shorthand (`!high`, `@tomorrow`, `~45m`, `#Project`). |
+| `php artisan ops:mobile` | Displays local LAN IP addresses and scannable terminal QR codes. |
+| `php artisan ops:maintenance` | Prunes expired notifications, stale reminders, and old backups. |
 
 ---
 
-## Automated Testing & Code Quality
+## Backup & Disaster Recovery Architecture
 
-```powershell
-# Format PHP code with Laravel Pint
-vendor\bin\pint
+Personal Operations Hub features an automated, enterprise-grade disaster recovery pipeline:
 
-# Run the Pest test suite (79 tests, 410 assertions)
-php artisan test --compact
-
-# Type-check Vue/TypeScript and compile production bundle
-npm run build
-```
+- **Automated Snapshots:** Hourly checks and 24-hour retention cycles.
+- **Pre-Restore Safety Net:** `ops:restore-database` creates a verified pre-restore snapshot before modifying active data.
+- **Corrupted State Protection:** If a restore attempt encounters an invalid file or fails post-restore integrity checking, the active database is **automatically rolled back** to the pre-restore snapshot.
+- **Authenticated Encryption:** AES-256-CBC encryption with PBKDF2-SHA256 (100,000 rounds) and HMAC-SHA256 authentication (`OPSHUBENC1` header).
+- **Explicit Migration Control:** Does not silently upgrade schemas upon restore; migrations require explicit `--migrate` approval.
 
 ---
 
-## License
+## Documentation Directory
 
-Open-source personal software under the [MIT License](LICENSE).
+For detailed operations, recovery, and production architecture guides, refer to:
+
+- 📖 **[Operations Runbook](docs/OPERATIONS_RUNBOOK.md)**: Day-to-day operations, logging, background workers, and troubleshooting.
+- 🛡️ **[Disaster Recovery Runbook](docs/DISASTER_RECOVERY_RUNBOOK.md)**: Bare-metal restore procedures, emergency decryption, and rollback drills.
+- 🚀 **[Production Deployment Guide](docs/PRODUCTION_DEPLOYMENT_GUIDE.md)**: Detailed deployment walkthroughs for Docker Compose + Caddy, Linux Systemd, and Cloud PaaS.
+- 🔒 **[Background Scheduler](docs/BACKGROUND_SCHEDULER.md)**: Scheduler configuration and recurring task engine.
+- 📅 **[Calendar Integration](docs/CALENDAR_INTEGRATION.md)**: RFC 5545 `.ics` export and private token feed architecture.

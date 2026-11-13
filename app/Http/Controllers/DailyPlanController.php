@@ -419,9 +419,59 @@ class DailyPlanController extends Controller
 
         $validated = $request->validate([
             'due_date' => 'required|date',
+            'daily_plan_id' => 'nullable|integer',
+            'plan_date' => 'nullable|date',
         ]);
 
-        $task->update(['due_date' => $validated['due_date']]);
+        $newDueDate = Carbon::parse($validated['due_date'])->toDateString();
+        $user = $request->user();
+
+        DB::transaction(function () use ($task, $validated, $newDueDate, $user, $request): void {
+            // 1. Identify active daily plan to detach from
+            $dailyPlan = null;
+            if (! empty($validated['daily_plan_id'])) {
+                $dailyPlan = DailyPlan::where('id', $validated['daily_plan_id'])
+                    ->where('user_id', $user->id)
+                    ->first();
+            } elseif (! empty($validated['plan_date'])) {
+                $dailyPlan = DailyPlan::where('user_id', $user->id)
+                    ->whereDate('date', substr((string) $validated['plan_date'], 0, 10))
+                    ->first();
+            } elseif ($request->filled('date')) {
+                $dailyPlan = DailyPlan::where('user_id', $user->id)
+                    ->whereDate('date', substr((string) $request->input('date'), 0, 10))
+                    ->first();
+            } elseif ($task->due_date) {
+                // If not explicitly passed, check if the task is in a daily plan matching its previous due date
+                $oldDueDate = Carbon::parse($task->due_date)->toDateString();
+                $dailyPlan = DailyPlan::where('user_id', $user->id)
+                    ->whereDate('date', $oldDueDate)
+                    ->whereHas('planTasks', fn ($q) => $q->where('task_id', $task->id))
+                    ->first();
+            }
+
+            // Fallback: Check if the task is attached to today's daily plan for this user
+            if (! $dailyPlan) {
+                $todayDate = UserDateTime::todayDateString($user);
+                $dailyPlan = DailyPlan::where('user_id', $user->id)
+                    ->whereDate('date', $todayDate)
+                    ->whereHas('planTasks', fn ($q) => $q->where('task_id', $task->id))
+                    ->first();
+            }
+
+            // 2. Update task due date
+            $task->update(['due_date' => $newDueDate]);
+
+            // 3. Detach from active daily plan only if rescheduled away from that plan's date
+            if ($dailyPlan) {
+                $planDate = Carbon::parse($dailyPlan->date)->toDateString();
+                if ($newDueDate !== $planDate) {
+                    DailyPlanTask::where('daily_plan_id', $dailyPlan->id)
+                        ->where('task_id', $task->id)
+                        ->delete();
+                }
+            }
+        });
 
         return back()->with('success', 'Task rescheduled.');
     }

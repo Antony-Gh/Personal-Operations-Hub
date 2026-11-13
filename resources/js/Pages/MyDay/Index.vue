@@ -21,6 +21,8 @@ import {
     AlertTriangle,
     X,
     Sparkles,
+    Calendar,
+    Smartphone,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -148,10 +150,20 @@ const openReschedule = (task: Task) => {
     rescheduleDate.value = task.due_date || props.date;
 };
 
-const submitReschedule = (task: Task) => {
+const submitReschedule = (task?: Task) => {
+    const targetTask =
+        task ||
+        [...props.plannedTasks, ...props.unplannedDueTasks, ...props.candidateTasks].find(
+            (t) => t.id === reschedulingTaskId.value
+        );
+    if (!targetTask) return;
+
     router.post(
-        route('tasks.reschedule', task.id),
-        { due_date: rescheduleDate.value },
+        route('tasks.reschedule', targetTask.id),
+        {
+            due_date: rescheduleDate.value,
+            daily_plan_id: props.dailyPlan?.id,
+        },
         {
             preserveScroll: true,
             onSuccess: () => {
@@ -160,6 +172,32 @@ const submitReschedule = (task: Task) => {
         }
     );
 };
+
+// Phone usage calculations
+const recordedMinutes = computed<number | null>(() => {
+    if (!props.phoneUsage) return null;
+    const m = props.phoneUsage.minutes;
+    return typeof m === 'number' && !isNaN(m) && isFinite(m) ? Math.max(0, m) : 0;
+});
+
+const validTargetMinutes = computed<number | null>(() => {
+    const t = props.targetPhoneMinutes;
+    return typeof t === 'number' && !isNaN(t) && isFinite(t) && t > 0 ? t : null;
+});
+
+const phoneUsageProgressPercent = computed<number | null>(() => {
+    if (recordedMinutes.value === null || validTargetMinutes.value === null) {
+        return null;
+    }
+    return Math.min(100, Math.round((recordedMinutes.value / validTargetMinutes.value) * 100));
+});
+
+const isOverPhoneTarget = computed<boolean>(() => {
+    if (recordedMinutes.value === null || validTargetMinutes.value === null) {
+        return false;
+    }
+    return recordedMinutes.value > validTargetMinutes.value;
+});
 
 // Visual Time-Blocking (06:00 - 23:00)
 const timelineHours = Array.from({ length: 18 }, (_, i) => {
@@ -511,6 +549,15 @@ const timelineByHour = computed(() => {
 
                                     <button
                                         type="button"
+                                        @click="openReschedule(task)"
+                                        class="p-1 rounded text-neutral-400 hover:text-indigo-600 transition"
+                                        title="Reschedule task"
+                                    >
+                                        <Calendar class="w-3.5 h-3.5" />
+                                    </button>
+
+                                    <button
+                                        type="button"
                                         @click="removeTaskFromPlan(task)"
                                         class="p-1 text-neutral-400 hover:text-rose-500 transition"
                                         title="Remove from plan"
@@ -752,6 +799,62 @@ const timelineByHour = computed(() => {
                             </button>
                         </form>
                     </div>
+
+                    <!-- Phone Usage Tracking Card -->
+                    <div class="bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 p-5 space-y-3">
+                        <div class="flex items-center justify-between">
+                            <div class="flex items-center gap-2">
+                                <span class="p-1.5 rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400">
+                                    <Smartphone class="w-4 h-4" />
+                                </span>
+                                <div>
+                                    <h3 class="text-sm font-semibold text-neutral-900 dark:text-white">Phone Usage</h3>
+                                    <p class="text-[11px] text-neutral-400">Mindful leisure tracking</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Empty State: No usage logged for this date -->
+                        <div v-if="recordedMinutes === null" class="text-center py-4 text-xs text-neutral-400">
+                            <p>No phone usage logged for this day yet.</p>
+                            <p v-if="validTargetMinutes !== null" class="text-[11px] text-neutral-500 mt-0.5">
+                                Target: &le; {{ validTargetMinutes }}m
+                            </p>
+                        </div>
+
+                        <!-- Active State: Recorded usage exists -->
+                        <div v-else class="space-y-2.5">
+                            <div class="flex items-baseline justify-between">
+                                <div>
+                                    <span class="text-2xl font-bold text-neutral-900 dark:text-white">{{ recordedMinutes }}</span>
+                                    <span class="text-xs text-neutral-400 ml-1">mins recorded</span>
+                                </div>
+                                <span v-if="validTargetMinutes !== null" class="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
+                                    Target: &le; {{ validTargetMinutes }}m
+                                    <span v-if="isOverPhoneTarget" class="text-amber-500 dark:text-amber-400 font-normal ml-1">
+                                        (+{{ recordedMinutes - validTargetMinutes }}m)
+                                    </span>
+                                </span>
+                                <span v-else class="text-xs text-neutral-400 italic">
+                                    No daily target set
+                                </span>
+                            </div>
+
+                            <!-- Progress Bar when a valid target exists -->
+                            <div v-if="validTargetMinutes !== null" class="w-full bg-neutral-200 dark:bg-neutral-800 rounded-full h-2 overflow-hidden">
+                                <div
+                                    class="h-2 rounded-full transition-all duration-300"
+                                    :class="isOverPhoneTarget ? 'bg-amber-500' : 'bg-purple-500'"
+                                    :style="{ width: `${phoneUsageProgressPercent}%` }"
+                                ></div>
+                            </div>
+
+                            <!-- Optional Notes -->
+                            <p v-if="phoneUsage?.notes" class="text-[11px] text-neutral-400 italic pt-1 border-t border-neutral-100 dark:border-neutral-800">
+                                &ldquo;{{ phoneUsage.notes }}&rdquo;
+                            </p>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -779,7 +882,7 @@ const timelineByHour = computed(() => {
                         </button>
                         <button
                             type="button"
-                            @click="submitReschedule(unplannedDueTasks.find((t) => t.id === reschedulingTaskId)!)"
+                            @click="submitReschedule()"
                             class="px-3 py-1.5 text-xs bg-indigo-600 text-white rounded font-medium hover:bg-indigo-700"
                         >
                             Confirm Date

@@ -148,10 +148,11 @@ class DatabaseBackupService
     public function listBackups(): array
     {
         $dir = $this->backupDirectory();
-        $files = File::glob($dir.DIRECTORY_SEPARATOR.'*.sqlite') ?: [];
+        $sqliteFiles = File::glob($dir.DIRECTORY_SEPARATOR.'*.sqlite') ?: [];
+        $encFiles = File::glob($dir.DIRECTORY_SEPARATOR.'*.enc') ?: [];
 
         $items = [];
-        foreach ($files as $filePath) {
+        foreach ($sqliteFiles as $filePath) {
             $filename = basename($filePath);
             $metaPath = $this->metadataPathFor($filePath);
             $meta = null;
@@ -177,6 +178,27 @@ class DatabaseBackupService
                 'tables_count' => $meta['tables_count'] ?? null,
                 'mirrored_to' => $meta['mirrored_to'] ?? null,
                 'encrypted_mirror' => (bool) ($meta['encrypted_mirror'] ?? false),
+                'is_encrypted' => false,
+            ];
+        }
+
+        foreach ($encFiles as $filePath) {
+            $filename = basename($filePath);
+            $sizeBytes = (int) File::size($filePath);
+            $createdAt = Carbon::createFromTimestamp(File::lastModified($filePath))->toIso8601String();
+
+            $items[] = [
+                'filename' => $filename,
+                'created_at' => $createdAt,
+                'size_bytes' => $sizeBytes,
+                'size_human' => $this->formatBytes($sizeBytes),
+                'sha256' => '',
+                'integrity_status' => 'encrypted',
+                'trigger' => 'encrypted',
+                'tables_count' => null,
+                'mirrored_to' => null,
+                'encrypted_mirror' => true,
+                'is_encrypted' => true,
             ];
         }
 
@@ -188,7 +210,7 @@ class DatabaseBackupService
     /**
      * Prune backups older than the retention window in days.
      */
-    public function pruneOldBackups(?int $retentionDays = null): int
+    public function pruneOldBackups(?int $retentionDays = null, bool $preserveManualAndPreRestore = true): int
     {
         $days = max(1, (int) ($retentionDays ?? config('operations.backups.default_retention_days', 14)));
         $cutoff = now()->subDays($days);
@@ -199,15 +221,25 @@ class DatabaseBackupService
         foreach ($files as $filePath) {
             $metaPath = $this->metadataPathFor($filePath);
             $fileTime = Carbon::createFromTimestamp(File::lastModified($filePath));
+            $trigger = 'scheduled';
 
             if (File::exists($metaPath)) {
                 $decoded = json_decode((string) File::get($metaPath), true);
-                if (is_array($decoded) && ! empty($decoded['created_at'])) {
-                    try {
-                        $fileTime = Carbon::parse($decoded['created_at']);
-                    } catch (Throwable) {
+                if (is_array($decoded)) {
+                    if (! empty($decoded['created_at'])) {
+                        try {
+                            $fileTime = Carbon::parse($decoded['created_at']);
+                        } catch (Throwable) {
+                        }
+                    }
+                    if (! empty($decoded['trigger'])) {
+                        $trigger = (string) $decoded['trigger'];
                     }
                 }
+            }
+
+            if ($preserveManualAndPreRestore && in_array($trigger, ['manual', 'pre_restore'], true)) {
+                continue;
             }
 
             if ($fileTime->lessThan($cutoff)) {
@@ -229,19 +261,31 @@ class DatabaseBackupService
     /**
      * Resolve and validate a backup file path safely within the backup directory.
      */
-    public function resolveBackupPath(string $filename): string
+    public function resolveBackupPath(string $filename, bool $allowEncrypted = false): string
     {
+        $pattern = $allowEncrypted
+            ? '/^[a-zA-Z0-9._-]+\.(sqlite|enc)$/'
+            : '/^[a-zA-Z0-9._-]+\.sqlite$/';
+
         $cleanName = basename($filename);
-        if ($cleanName !== $filename || ! preg_match('/^[a-zA-Z0-9._-]+\.sqlite$/', $cleanName)) {
-            throw new RuntimeException('Invalid backup filename.');
+        if ($cleanName === $filename && preg_match($pattern, $cleanName)) {
+            $fullPath = $this->backupDirectory().DIRECTORY_SEPARATOR.$cleanName;
+            if (! File::exists($fullPath)) {
+                throw new RuntimeException('Selected backup file does not exist.');
+            }
+
+            return $fullPath;
         }
 
-        $fullPath = $this->backupDirectory().DIRECTORY_SEPARATOR.$cleanName;
-        if (! File::exists($fullPath)) {
-            throw new RuntimeException('Selected backup file does not exist.');
+        // Support direct relative or absolute path pointing to an existing file
+        if (File::exists($filename)) {
+            $real = realpath($filename);
+            if ($real !== false && preg_match($pattern, basename($real))) {
+                return $real;
+            }
         }
 
-        return $fullPath;
+        throw new RuntimeException('Invalid backup filename.');
     }
 
     /**
@@ -249,7 +293,7 @@ class DatabaseBackupService
      */
     public function deleteBackup(string $filename): void
     {
-        $path = $this->resolveBackupPath($filename);
+        $path = $this->resolveBackupPath($filename, allowEncrypted: true);
         $metaPath = $this->metadataPathFor($path);
 
         File::delete($path);
@@ -265,7 +309,7 @@ class DatabaseBackupService
      *
      * @return array<string, mixed>
      */
-    public function restoreFromBackup(string $filename): array
+    public function restoreFromBackup(string $filename, bool $runMigrations = false): array
     {
         $backupPath = $this->resolveBackupPath($filename);
 
@@ -280,6 +324,7 @@ class DatabaseBackupService
         }
 
         $safetySnapshot = $this->createBackup('pre_restore');
+        $safetySnapshotPath = $this->backupDirectory().DIRECTORY_SEPARATOR.$safetySnapshot['filename'];
         $destinationPath = $this->sourceDatabasePath();
 
         $isUsingInMemoryConnection = (string) config('database.connections.sqlite.database') === ':memory:';
@@ -308,29 +353,88 @@ class DatabaseBackupService
                 throw new RuntimeException('SQLite online restore operation returned false.');
             }
 
+            $destIntegrity = $this->verifySqliteIntegrity($destinationPath);
+            if ($destIntegrity !== 'ok') {
+                throw new RuntimeException("Restored database integrity check failed ({$destIntegrity}).");
+            }
+
             if (! $isUsingInMemoryConnection) {
                 DB::reconnect('sqlite');
-                Artisan::call('migrate', ['--force' => true]);
+                if ($runMigrations) {
+                    Artisan::call('migrate', ['--force' => true]);
+                }
             }
 
             Log::warning('Database restored from local backup.', [
                 'restored_from' => basename($backupPath),
                 'pre_restore_snapshot' => $safetySnapshot['filename'],
+                'migrations_run' => $runMigrations,
             ]);
 
             return [
                 'restored_from' => basename($backupPath),
                 'pre_restore_snapshot' => $safetySnapshot['filename'],
+                'migrations_run' => $runMigrations,
             ];
         } catch (Throwable $e) {
+            // Automatic safety rollback to pre-restore snapshot if destination was modified or error occurred
+            if (! $isUsingInMemoryConnection && File::exists($safetySnapshotPath)) {
+                try {
+                    $rollbackSource = new SQLite3($safetySnapshotPath, SQLITE3_OPEN_READONLY);
+                    $rollbackDest = new SQLite3($destinationPath, SQLITE3_OPEN_READWRITE | SQLITE3_OPEN_CREATE);
+                    $rollbackDest->busyTimeout(5000);
+                    $rollbackSource->backup($rollbackDest);
+                    $rollbackSource->close();
+                    $rollbackDest->close();
+
+                    Log::warning('Active database safely rolled back to pre-restore snapshot after failed restore.', [
+                        'safety_snapshot' => $safetySnapshot['filename'],
+                    ]);
+                } catch (Throwable $rollbackError) {
+                    Log::critical('Emergency rollback to pre-restore snapshot failed.', [
+                        'error' => $rollbackError->getMessage(),
+                    ]);
+                }
+            }
+
             if (! $isUsingInMemoryConnection) {
                 DB::reconnect('sqlite');
             }
+
             Log::error('Database restoration failed.', [
                 'filename' => $filename,
+                'safety_snapshot' => $safetySnapshot['filename'],
                 'error' => $e->getMessage(),
             ]);
-            throw new RuntimeException('Database restore failed: '.$e->getMessage(), 0, $e);
+
+            throw new RuntimeException('Database restore failed: '.$e->getMessage()." (Active database preserved via safety snapshot {$safetySnapshot['filename']})", 0, $e);
+        }
+    }
+
+    /**
+     * Restore an authenticated AES-256 encrypted backup archive back into the active database.
+     *
+     * @return array<string, mixed>
+     */
+    public function restoreFromEncryptedBackup(string $filename, string $passphrase, bool $runMigrations = false): array
+    {
+        $encPath = $this->resolveBackupPath($filename, allowEncrypted: true);
+        $tempSqlitePath = $this->backupDirectory().DIRECTORY_SEPARATOR.'temp-restore-'.bin2hex(random_bytes(6)).'.sqlite';
+
+        try {
+            $this->decryptBackupFile($encPath, $tempSqlitePath, $passphrase);
+            $result = $this->restoreFromBackup(basename($tempSqlitePath), $runMigrations);
+            $result['restored_from'] = basename($encPath);
+
+            return $result;
+        } finally {
+            if (File::exists($tempSqlitePath)) {
+                @File::delete($tempSqlitePath);
+            }
+            $metaPath = $this->metadataPathFor($tempSqlitePath);
+            if (File::exists($metaPath)) {
+                @File::delete($metaPath);
+            }
         }
     }
 

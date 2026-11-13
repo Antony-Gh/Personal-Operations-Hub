@@ -8,7 +8,7 @@
 
 ### 1.1 Project Overview & Purpose
 
-**Personal Operations Hub** is an integrated personal management system combining task management, project milestones, daily planning, weekly reviews, calendar event scheduling, habit tracking, and phone usage analytics. It is built as a single-page application using **Laravel 12 (PHP 8.4)** on the backend, **Vue 3 (Composition API, TypeScript)** and **Tailwind CSS** on the frontend, linked via **Inertia.js v2**.
+**Personal Operations Hub** is an integrated personal management system combining task management, project milestones, daily planning, weekly reviews, calendar event scheduling, habit tracking, and phone usage analytics. It is built as a single-page application using **Laravel 13.39 (PHP 8.4)** on the backend, **Vue 3 (Composition API, TypeScript)** and **Tailwind CSS** on the frontend, linked via **Inertia.js v2**.
 
 ### 1.2 Current Maturity Level
 

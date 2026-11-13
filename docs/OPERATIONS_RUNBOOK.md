@@ -6,7 +6,7 @@ This runbook outlines standard operating procedures, daemon management, logging,
 
 ## 1. Environment Architecture & Entrypoints
 
-Personal Operations Hub provides three primary operating methods, all sharing the same Laravel 12 / PHP 8.4 backend and SQLite WAL database:
+Personal Operations Hub provides three primary operating methods, all sharing the same Laravel 13.39 (PHP 8.4) backend and SQLite WAL database:
 
 | Environment | Primary Entrypoint | Description |
 | :--- | :--- | :--- |

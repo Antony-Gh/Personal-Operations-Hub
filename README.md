@@ -8,7 +8,7 @@ Rather than a generic to-do list or cloud-dependent SaaS clone, **Personal Opera
 
 ## Architecture & Technology Stack
 
-- **Backend**: Laravel 12 (PHP 8.4)
+- **Backend**: Laravel 13.39.0 (PHP 8.4)
 - **Frontend**: Vue 3.5 (Composition API) + TypeScript + Inertia.js v2
 - **Styling & UI**: Tailwind CSS 3 + Lucide Icons
 - **Database & Concurrency**: SQLite with Write-Ahead Logging (WAL mode), `busy_timeout = 5000ms`, `synchronous = NORMAL`

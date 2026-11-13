@@ -70,10 +70,11 @@ class WeeklyReviewController extends Controller
             ->get();
 
         // Upcoming deadlines next week
+        $nextWeekStart = $endOfWeek->copy()->addDay()->toDateString();
         $nextWeekEnd = $endOfWeek->copy()->addDays(7)->toDateString();
         $upcomingTasks = Task::with('category')
             ->where('user_id', $user->id)
-            ->whereBetween('due_date', [$endDateStr, $nextWeekEnd])
+            ->whereBetween('due_date', [$nextWeekStart, $nextWeekEnd])
             ->where('status', '!=', 'completed')
             ->orderBy('due_date', 'asc')
             ->orderByPriority()

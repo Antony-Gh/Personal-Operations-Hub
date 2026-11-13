@@ -1,0 +1,12 @@
+[Unit]
+Description=Personal Operations Hub Scheduled Tasks Runner
+After=network.target
+
+[Service]
+Type=oneshot
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/html
+ExecStart=/usr/bin/php /var/www/html/artisan schedule:run --no-interaction
+StandardOutput=append:/var/www/html/storage/logs/scheduler.log
+StandardError=append:/var/www/html/storage/logs/scheduler.err.log

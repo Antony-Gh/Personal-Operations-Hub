@@ -1,0 +1,17 @@
+[Unit]
+Description=Personal Operations Hub Queue Worker
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/var/www/html
+ExecStart=/usr/bin/php /var/www/html/artisan queue:work --sleep=3 --tries=3 --timeout=60 --no-interaction
+Restart=always
+RestartSec=5
+StandardOutput=append:/var/www/html/storage/logs/queue.log
+StandardError=append:/var/www/html/storage/logs/queue.err.log
+
+[Install]
+WantedBy=multi-user.target

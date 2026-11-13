@@ -30,13 +30,53 @@ detect_environment() {
     esac
 }
 
+map_windows_args() {
+    if [ $# -eq 0 ]; then
+        return
+    fi
+    case "$1" in
+        start) echo "-Option 1" ;;
+        start-bg|bg) echo "-Option 2 -NonInteractive" ;;
+        status) echo "-Option 3 -NonInteractive" ;;
+        stop) echo "-Option 4 -NonInteractive" ;;
+        restart) echo "-Option 5 -NonInteractive" ;;
+        dev) echo "-Option 6" ;;
+        serve) echo "-Option 7" ;;
+        scheduler) echo "-Option 8" ;;
+        queue) echo "-Option 9" ;;
+        build) echo "-Option 10 -NonInteractive" ;;
+        migrate) echo "-Option 11 -NonInteractive" ;;
+        "migrate:status") echo "-Option 12 -NonInteractive" ;;
+        rollback) echo "-Option 13" ;;
+        wipe) echo "-Option 14" ;;
+        backup) echo "-Option 15 -NonInteractive" ;;
+        restore) echo "-Option 16" ;;
+        decrypt) echo "-Option 17" ;;
+        diagnostics|doctor) echo "-Option 18 -NonInteractive" ;;
+        test) echo "-Option 19 -NonInteractive" ;;
+        probe) echo "-Option 20 -NonInteractive" ;;
+        logs) echo "-Option 21 -NonInteractive" ;;
+        clean) echo "-Option 22 -NonInteractive" ;;
+        optimize) echo "-Option 23 -NonInteractive" ;;
+        prune) echo "-Option 24" ;;
+        ops:status) echo "-Option 32 -NonInteractive" ;;
+        quick-add) echo "-Option 33" ;;
+        list|--list|-l) echo "-List" ;;
+        help|--help|-h) echo "-Help" ;;
+        [0-9]*) echo "-Option $1" ;;
+        *) echo "$@" ;;
+    esac
+}
+
 ENV_TYPE="$(detect_environment)"
 
 # Handle explicit --windows flag in WSL or hybrid shells
 if [ "$1" = "--windows" ]; then
     shift
     if command -v powershell.exe >/dev/null 2>&1; then
-        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT_DIR/controller.ps1" "$@"
+        PS_ARGS=$(map_windows_args "$@")
+        # shellcheck disable=SC2086
+        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT_DIR/controller.ps1" $PS_ARGS
     else
         echo "[ERROR] powershell.exe not found in PATH." >&2
         exit 1
@@ -45,7 +85,9 @@ fi
 
 if [ "$ENV_TYPE" = "windows-shell" ]; then
     if command -v powershell.exe >/dev/null 2>&1; then
-        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT_DIR/controller.ps1" "$@"
+        PS_ARGS=$(map_windows_args "$@")
+        # shellcheck disable=SC2086
+        exec powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$ROOT_DIR/controller.ps1" $PS_ARGS
     fi
 fi
 

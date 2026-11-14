@@ -264,7 +264,14 @@ watch(
                         </div>
                     </nav>
 
-                    <div class="p-4 border-t border-neutral-200 dark:border-neutral-800 mt-auto shrink-0 sticky bottom-0 bg-white dark:bg-neutral-900 z-10">
+                    <div class="p-4 border-t border-neutral-200 dark:border-neutral-800 mt-auto shrink-0 sticky bottom-0 bg-white dark:bg-neutral-900 z-10 space-y-1">
+                        <button
+                            @click="isMobileDrawerOpen = false; isMobileModalOpen = true"
+                            class="w-full flex items-center gap-2 px-3 py-2 text-xs font-medium text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded-lg transition"
+                        >
+                            <Smartphone class="w-4 h-4 text-indigo-500" />
+                            <span>Mobile Connect (QR Code)</span>
+                        </button>
                         <Link
                             :href="route('logout')"
                             method="post"
@@ -316,8 +323,9 @@ watch(
                         <!-- Mobile Connect (QR Code) Button -->
                         <button
                             @click="isMobileModalOpen = true"
-                            class="p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition"
+                            class="hidden sm:inline-flex p-2 rounded-lg text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition items-center justify-center"
                             title="Connect Mobile Phone (QR Code)"
+                            aria-label="Connect Mobile Phone (QR Code)"
                         >
                             <Smartphone class="w-4 h-4" />
                         </button>

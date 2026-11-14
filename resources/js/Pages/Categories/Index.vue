@@ -16,6 +16,7 @@ import {
     AlertTriangle,
     CheckSquare,
     Folder,
+    Info,
 } from 'lucide-vue-next';
 
 const props = defineProps<{
@@ -316,6 +317,16 @@ const moveCategory = (index: number, direction: 'up' | 'down') => {
                             <h3 class="text-base font-bold text-neutral-900 dark:text-white">Delete Area</h3>
                             <p class="text-xs text-neutral-400">"{{ categoryToDelete.name }}"</p>
                         </div>
+                    </div>
+
+                    <div class="p-3 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/60 text-xs space-y-1">
+                        <div class="flex items-center gap-1.5 font-semibold text-neutral-800 dark:text-neutral-200">
+                            <Info class="w-4 h-4 text-indigo-500 shrink-0" />
+                            <span>Child Projects Notice</span>
+                        </div>
+                        <p class="text-neutral-600 dark:text-neutral-400 leading-relaxed text-[11px]">
+                            Associated child projects will remain stored and are never deleted. Their category association will be removed, and they will become unassigned.
+                        </p>
                     </div>
 
                     <p class="text-xs text-neutral-600 dark:text-neutral-300">
